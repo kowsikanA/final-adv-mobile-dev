@@ -2,6 +2,7 @@ class Expense{
     int? id;
     String title;
     double amount;
+    String category;
     DateTime? date;
     String? description;
     String paymentMethod;
@@ -10,6 +11,7 @@ class Expense{
             this.id, 
             required this.title, 
             required this.amount, 
+            required this.category,
             this.date, 
             this.description, 
             required this.paymentMethod
@@ -19,6 +21,7 @@ class Expense{
     : id = map["id"] as int?,
       title = map["title"] as String,
       amount = (map["amount"] as num).toDouble(),
+      category = map["category"] as String,
       date = map["date"] != null
           ? DateTime.parse(map["date"] as String)
           : null,
@@ -31,6 +34,7 @@ class Expense{
             'id' :  this.id,
             'title' : this.title,
             'amount' : this.amount,
+            'category': this.category,
             'date' : date?.toIso8601String(),
             'description':  this.description,
             'paymentMethod' : this.paymentMethod
