@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'database/expense_database.dart';
 import 'models/expense.dart';
 import 'add_expense.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ExpensePage extends StatefulWidget {
   const ExpensePage({super.key});
