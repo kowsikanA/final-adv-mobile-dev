@@ -1,7 +1,14 @@
 // import 'package:flutter/material.dart';
-// import 'package:google_fonts/google_fonts.dart';
-// import 'expense_page.dart';
-// void main() {
+// import 'package:firebase_core/firebase_core.dart';
+
+// import 'firebase_options.dart';
+// import 'auth_gate.dart';
+
+// Future<void> main() async {
+//   WidgetsFlutterBinding.ensureInitialized();
+//   await Firebase.initializeApp(
+//     options: DefaultFirebaseOptions.currentPlatform,
+//   );
 //   runApp(const MyApp());
 // }
 
@@ -12,78 +19,8 @@
 //   Widget build(BuildContext context) {
 //     return MaterialApp(
 //       debugShowCheckedModeBanner: false,
-//       title: 'Wealtha',
-//       theme: ThemeData(
-//         useMaterial3: true,
-//         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF16A34A)),
-//         textTheme: GoogleFonts.interTextTheme(),
-//       ),
-//       home: const MyHomePage(title: 'Wealtha'),
-//     );
-//   }
-// }
-
-// class MyHomePage extends StatefulWidget {
-//   const MyHomePage({super.key, required this.title});
-
-//   final String title;
-
-//   @override
-//   State<MyHomePage> createState() => _MyHomePageState();
-// }
-
-// class _MyHomePageState extends State<MyHomePage> {
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       body: Container(
-//         // you can keep Colors.greenAccent, but this looks cleaner
-//         color: const Color(0xFF6EE7B7),
-//         child: Center(
-//           child: Column(
-//             mainAxisAlignment: MainAxisAlignment.center,
-//             children: [
-//               const Icon(Icons.trending_up, size: 80, color: Colors.black87),
-//               const SizedBox(height: 20),
-//               Text(
-//                 'Wealtha',
-//                 style: GoogleFonts.inter(
-//                   fontSize: 48,
-//                   fontWeight: FontWeight.w800,
-//                   color: Colors.black87,
-//                   letterSpacing: 1,
-//                 ),
-//               ),
-//               const SizedBox(height: 10),
-//               Text(
-//                 'Track your spending. Grow your savings.',
-//                 style: GoogleFonts.inter(
-//                   fontSize: 16,
-//                   fontWeight: FontWeight.w500,
-//                   color: Colors.black54,
-//                 ),
-//               ),
-//               const SizedBox(height: 40),
-//               ElevatedButton(
-//                 onPressed: () {
-//                   Navigator.push(context,
-//                     MaterialPageRoute(builder: (_) => const ExpensePage()),);
-//                 },
-//                 style: ElevatedButton.styleFrom(
-//                   backgroundColor: Colors.black87,
-//                   foregroundColor: Colors.white,
-//                   padding:
-//                       const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-//                   shape: RoundedRectangleBorder(
-//                     borderRadius: BorderRadius.circular(14),
-//                   ),
-//                 ),
-//                 child: const Text("Get Started"),
-//               ),
-//             ],
-//           ),
-//         ),
-//       ),
+//       title: 'Expenses',
+//       home: AuthGate(), 
 //     );
 //   }
 // }
@@ -105,12 +42,73 @@ Future<void> main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  static const _seed = Color(0xFF16A34A); // green
+
   @override
   Widget build(BuildContext context) {
+    final scheme = ColorScheme.fromSeed(seedColor: _seed);
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Expenses',
-      home: AuthGate(), 
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: scheme,
+        scaffoldBackgroundColor: scheme.surface,
+        appBarTheme: AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          backgroundColor: scheme.surface,
+          foregroundColor: scheme.onSurface,
+          titleTextStyle: TextStyle(
+            color: scheme.onSurface,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          elevation: 0.8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: scheme.surfaceContainerHighest.withOpacity(0.55),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: scheme.primary, width: 1.2),
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
+      home: AuthGate(),
     );
   }
 }
