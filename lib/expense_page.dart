@@ -350,6 +350,7 @@ class ExpensePage extends StatefulWidget {
 class _ExpensePageState extends State<ExpensePage> {
   final ExpenseDatabase _db = ExpenseDatabase.instance;
   List<Expense> _expenses = [];
+  int _listAnimationSeed = 0;
 
   @override
   void initState() {
@@ -360,7 +361,10 @@ class _ExpensePageState extends State<ExpensePage> {
   Future<void> _loadExpenses() async {
     final data = await _db.getExpenses();
     if (!mounted) return;
-    setState(() => _expenses = data);
+    setState(() {
+      _expenses = data;
+      _listAnimationSeed++;
+    });
   }
 
   double get _total {
@@ -420,11 +424,52 @@ class _ExpensePageState extends State<ExpensePage> {
   }
 
   Future<void> _deleteExpense(Expense expense) async {
+    final removedIndex = _expenses.indexWhere((e) => e.id == expense.id);
+    if (removedIndex == -1) return;
+
     HapticFeedback.mediumImpact();
-    await _db.deleteExpense(expense.id!);
+
     setState(() {
       _expenses.removeWhere((e) => e.id == expense.id);
     });
+
+    var isUndo = false;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        content: Text('Deleted "${expense.title}"'),
+        duration: const Duration(seconds: 3),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () {
+            isUndo = true;
+            if (!mounted) return;
+            setState(() {
+              _expenses.insert(removedIndex, expense);
+            });
+          },
+        ),
+      ),
+    );
+
+    await _db.deleteExpense(expense.id!);
+    await controller.closed;
+
+    if (isUndo) {
+      await _db.insertExpense(
+        Expense(
+          title: expense.title,
+          amount: expense.amount,
+          category: expense.category,
+          date: expense.date,
+          description: expense.description,
+          paymentMethod: expense.paymentMethod,
+        ),
+      );
+      await _loadExpenses();
+    }
   }
 
   Future<void> _logout() async {
@@ -513,20 +558,38 @@ class _ExpensePageState extends State<ExpensePage> {
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest.withOpacity(0.65),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        "${_expenses.length} items",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: scheme.onSurface,
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: ScaleTransition(
+                            scale: Tween<double>(
+                              begin: 0.96,
+                              end: 1.0,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Container(
+                        key: ValueKey(_expenses.length),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest.withOpacity(0.65),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          "${_expenses.length} items",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: scheme.onSurface,
+                          ),
                         ),
                       ),
                     ),
@@ -573,95 +636,118 @@ class _ExpensePageState extends State<ExpensePage> {
                     )
                   : Column(
                       key: const ValueKey("list"),
-                      children: _expenses.map((expense) {
-                        return Dismissible(
-                          key: ValueKey(expense.id),
-                          direction: DismissDirection.endToStart,
-                          onDismissed: (_) => _deleteExpense(expense),
-                          background: Container(
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            padding: const EdgeInsets.symmetric(horizontal: 18),
-                            alignment: Alignment.centerRight,
-                            decoration: BoxDecoration(
-                              color: scheme.errorContainer,
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: Icon(
-                              Icons.delete,
-                              color: scheme.onErrorContainer,
-                            ),
+                      children: _expenses.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final expense = entry.value;
+                        final animDuration = Duration(
+                          milliseconds: 220 + (index * 35).clamp(0, 280),
+                        );
+
+                        return TweenAnimationBuilder<double>(
+                          key: ValueKey(
+                            'expense-${expense.id}-$_listAnimationSeed',
                           ),
-                          child: AnimatedSize(
-                            duration: const Duration(milliseconds: 200),
-                            curve: Curves.easeOut,
-                            child: Card(
+                          duration: animDuration,
+                          curve: Curves.easeOutCubic,
+                          tween: Tween(begin: 0, end: 1),
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, (1 - value) * 16),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Dismissible(
+                            key: ValueKey(expense.id),
+                            direction: DismissDirection.endToStart,
+                            onDismissed: (_) => _deleteExpense(expense),
+                            background: Container(
                               margin: const EdgeInsets.symmetric(vertical: 6),
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 8,
-                                ),
-                                title: Text(
-                                  expense.title,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w900,
+                              padding: const EdgeInsets.symmetric(horizontal: 18),
+                              alignment: Alignment.centerRight,
+                              decoration: BoxDecoration(
+                                color: scheme.errorContainer,
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: Icon(
+                                Icons.delete,
+                                color: scheme.onErrorContainer,
+                              ),
+                            ),
+                            child: AnimatedSize(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOut,
+                              child: Card(
+                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
                                   ),
-                                ),
-                                subtitle: Padding(
-                                  padding: const EdgeInsets.only(top: 6),
-                                  child: Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: _chipColor(
+                                  title: Text(
+                                    expense.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _chipColor(
+                                              expense.category,
+                                              scheme,
+                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                          ),
+                                          child: Text(
                                             expense.category,
-                                            scheme,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                        ),
-                                        child: Text(
-                                          expense.category,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            color: scheme.onSurface,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: scheme.onSurface,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: scheme
-                                              .surfaceContainerHighest
-                                              .withOpacity(0.7),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
-                                        ),
-                                        child: Text(
-                                          expense.paymentMethod,
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            color: scheme.onSurface,
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: scheme
+                                                .surfaceContainerHighest
+                                                .withOpacity(0.7),
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                          ),
+                                          child: Text(
+                                            expense.paymentMethod,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: scheme.onSurface,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                trailing: Text(
-                                  _money(expense.amount),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    color: scheme.onSurface,
+                                  trailing: Text(
+                                    _money(expense.amount),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      color: scheme.onSurface,
+                                    ),
                                   ),
                                 ),
                               ),
