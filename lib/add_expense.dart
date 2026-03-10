@@ -1,192 +1,3 @@
-// import 'package:flutter/material.dart';
-// import 'package:flutter/services.dart';
-// import 'database/expense_database.dart';
-// import 'models/expense.dart';
-
-// class AddExpensePage extends StatefulWidget {
-//   const AddExpensePage({super.key});
-
-//   @override
-//   State<AddExpensePage> createState() => _AddExpensePageState();
-// }
-
-// class _AddExpensePageState extends State<AddExpensePage> {
-//   final _formKey = GlobalKey<FormState>();
-
-//   final _titleCtrl = TextEditingController();
-//   final _amountCtrl = TextEditingController();
-//   final _descCtrl = TextEditingController();
-
-//   DateTime? _date = DateTime.now();
-
-//   // simple starter lists
-//   final List<String> _categories = const [
-//     "Food",
-//     "Transport",
-//     "Bills",
-//     "Shopping",
-//     "Entertainment",
-//     "Health",
-//     "Other"
-//   ];
-
-//   final List<String> _paymentMethods = const [
-//     "Cash",
-//     "Debit",
-//     "Credit",
-//     "Online",
-//   ];
-
-//   String _selectedCategory = "Food";
-//   String _selectedPayment = "Debit";
-
-//   @override
-//   void dispose() {
-//     _titleCtrl.dispose();
-//     _amountCtrl.dispose();
-//     _descCtrl.dispose();
-//     super.dispose();
-//   }
-
-//   Future<void> _pickDate() async {
-//     final now = DateTime.now();
-//     final picked = await showDatePicker(
-//       context: context,
-//       initialDate: _date ?? now,
-//       firstDate: DateTime(now.year - 5),
-//       lastDate: DateTime(now.year + 5),
-//     );
-
-//     if (picked != null) {
-//       setState(() => _date = picked);
-//     }
-//   }
-
-//   Future<void> _save() async {
-//     if (!_formKey.currentState!.validate()) return;
-
-//     final amount = double.tryParse(_amountCtrl.text.trim());
-//     if (amount == null) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(content: Text("Amount must be a number")),
-//       );
-//       return;
-//     }
-
-//     final expense = Expense(
-//       title: _titleCtrl.text.trim(),
-//       amount: amount,
-//       category: _selectedCategory,
-//       date: _date,
-//       description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
-//       paymentMethod: _selectedPayment,
-//     );
-
-//     await ExpenseDatabase.instance.insertExpense(expense);
-
-//     HapticFeedback.mediumImpact();
-//     if (!mounted) return;
-//     Navigator.pop(context, true); // tell dashboard to refresh
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       appBar: AppBar(title: const Text("Add Expense")),
-//       body: Padding(
-//         padding: const EdgeInsets.all(16),
-//         child: Form(
-//           key: _formKey,
-//           child: ListView(
-//             children: [
-//               TextFormField(
-//                 controller: _titleCtrl,
-//                 decoration: const InputDecoration(
-//                   labelText: "Title",
-//                   border: OutlineInputBorder(),
-//                 ),
-//                 validator: (v) {
-//                   if (v == null || v.trim().isEmpty) return "Title is required";
-//                   return null;
-//                 },
-//               ),
-//               const SizedBox(height: 12),
-
-//               TextFormField(
-//                 controller: _amountCtrl,
-//                 keyboardType: TextInputType.number,
-//                 decoration: const InputDecoration(
-//                   labelText: "Amount",
-//                   hintText: "e.g., 12.50",
-//                   border: OutlineInputBorder(),
-//                 ),
-//                 validator: (v) {
-//                   if (v == null || v.trim().isEmpty) return "Amount is required";
-//                   return null;
-//                 },
-//               ),
-//               const SizedBox(height: 12),
-
-//               DropdownButtonFormField<String>(
-//                 value: _selectedCategory,
-//                 items: _categories
-//                     .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-//                     .toList(),
-//                 onChanged: (v) => setState(() => _selectedCategory = v!),
-//                 decoration: const InputDecoration(
-//                   labelText: "Category",
-//                   border: OutlineInputBorder(),
-//                 ),
-//               ),
-//               const SizedBox(height: 12),
-
-//               DropdownButtonFormField<String>(
-//                 value: _selectedPayment,
-//                 items: _paymentMethods
-//                     .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-//                     .toList(),
-//                 onChanged: (v) => setState(() => _selectedPayment = v!),
-//                 decoration: const InputDecoration(
-//                   labelText: "Payment Method",
-//                   border: OutlineInputBorder(),
-//                 ),
-//               ),
-//               const SizedBox(height: 12),
-
-//               OutlinedButton.icon(
-//                 onPressed: _pickDate,
-//                 icon: const Icon(Icons.calendar_month_outlined),
-//                 label: Text(
-//                   _date == null
-//                       ? "Pick date"
-//                       : "Date: ${_date!.toLocal().toString().split(' ').first}",
-//                 ),
-//               ),
-//               const SizedBox(height: 12),
-
-//               TextFormField(
-//                 controller: _descCtrl,
-//                 maxLines: 3,
-//                 decoration: const InputDecoration(
-//                   labelText: "Description (optional)",
-//                   border: OutlineInputBorder(),
-//                 ),
-//               ),
-//               const SizedBox(height: 16),
-
-//               ElevatedButton(
-//                 onPressed: _save,
-//                 child: const Text("Save Expense"),
-//               ),
-//             ],
-//           ),
-//         ),
-//       ),
-//     );
-//   }
-// }
-
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'database/expense_database.dart';
@@ -199,7 +10,8 @@ class AddExpensePage extends StatefulWidget {
   State<AddExpensePage> createState() => _AddExpensePageState();
 }
 
-class _AddExpensePageState extends State<AddExpensePage> {
+class _AddExpensePageState extends State<AddExpensePage>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
 
   final _titleCtrl = TextEditingController();
@@ -229,12 +41,57 @@ class _AddExpensePageState extends State<AddExpensePage> {
   String _selectedPayment = "Debit";
   bool _showDescription = false;
 
+  bool _isFabOpen = false;
+  late AnimationController _fabController;
+  late Animation<double> _fabAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fabController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _fabAnimation = CurvedAnimation(
+      parent: _fabController,
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   void dispose() {
     _titleCtrl.dispose();
     _amountCtrl.dispose();
     _descCtrl.dispose();
+    _fabController.dispose();
     super.dispose();
+  }
+
+  void _toggleFab() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _isFabOpen = !_isFabOpen;
+    });
+
+    if (_isFabOpen) {
+      _fabController.forward();
+    } else {
+      _fabController.reverse();
+    }
+  }
+
+  void _onCameraTap() {
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Camera action tapped")),
+    );
+  }
+
+  void _onFileTap() {
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("XLSX/File action tapped")),
+    );
   }
 
   Future<void> _pickDate() async {
@@ -281,6 +138,21 @@ class _AddExpensePageState extends State<AddExpensePage> {
     Navigator.pop(context, true);
   }
 
+  Widget _buildMiniFab({
+    required IconData icon,
+    required String heroTag,
+    required VoidCallback onPressed,
+  }) {
+    return ScaleTransition(
+      scale: _fabAnimation,
+      child: FloatingActionButton.small(
+        heroTag: heroTag,
+        onPressed: onPressed,
+        child: Icon(icon),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -308,15 +180,18 @@ class _AddExpensePageState extends State<AddExpensePage> {
                           prefixIcon: Icon(Icons.title),
                         ),
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return "Title is required";
+                          if (v == null || v.trim().isEmpty) {
+                            return "Title is required";
+                          }
                           return null;
                         },
                       ),
                       const SizedBox(height: 12),
-
                       TextFormField(
                         controller: _amountCtrl,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         textInputAction: TextInputAction.next,
                         decoration: const InputDecoration(
                           labelText: "Amount",
@@ -324,13 +199,13 @@ class _AddExpensePageState extends State<AddExpensePage> {
                           prefixIcon: Icon(Icons.attach_money),
                         ),
                         validator: (v) {
-                          if (v == null || v.trim().isEmpty) return "Amount is required";
+                          if (v == null || v.trim().isEmpty) {
+                            return "Amount is required";
+                          }
                           return null;
                         },
                       ),
                       const SizedBox(height: 16),
-
-                      // Category chips (Interaction + Haptic)
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -357,10 +232,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                           );
                         }).toList(),
                       ),
-
                       const SizedBox(height: 16),
-
-                      // Payment chips (Interaction + Haptic)
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -387,10 +259,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                           );
                         }).toList(),
                       ),
-
                       const SizedBox(height: 16),
-
-                      // Date button
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
@@ -404,10 +273,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 10),
-
-                      // Animated description toggle (Animation)
                       Row(
                         children: [
                           Expanded(
@@ -447,9 +313,7 @@ class _AddExpensePageState extends State<AddExpensePage> {
                               )
                             : const SizedBox.shrink(),
                       ),
-
                       const SizedBox(height: 18),
-
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -465,6 +329,87 @@ class _AddExpensePageState extends State<AddExpensePage> {
             ),
           ],
         ),
+      ),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (_isFabOpen) ...[
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    "Import File",
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                _buildMiniFab(
+                  icon: Icons.description_outlined,
+                  heroTag: "file_fab",
+                  onPressed: _onFileTap,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    "Scan Receipt",
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                _buildMiniFab(
+                  icon: Icons.camera_alt_outlined,
+                  heroTag: "camera_fab",
+                  onPressed: _onCameraTap,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
+          FloatingActionButton(
+            heroTag: "main_expandable_fab",
+            onPressed: _toggleFab,
+            child: AnimatedRotation(
+              turns: _isFabOpen ? 0.125 : 0,
+              duration: const Duration(milliseconds: 220),
+              child: Icon(_isFabOpen ? Icons.close : Icons.add),
+            ),
+          ),
+        ],
       ),
     );
   }
