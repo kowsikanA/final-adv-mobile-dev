@@ -1,5 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:latlong2/latlong.dart';
+
 import 'database/expense_database.dart';
 import 'models/expense.dart';
 
@@ -17,6 +23,7 @@ class _AddExpensePageState extends State<AddExpensePage>
   final _titleCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _locationCtrl = TextEditingController();
 
   DateTime? _date = DateTime.now();
 
@@ -45,6 +52,12 @@ class _AddExpensePageState extends State<AddExpensePage>
   late AnimationController _fabController;
   late Animation<double> _fabAnimation;
 
+  Timer? _locationDebounce;
+  final MapController _mapController = MapController();
+  LatLng? _locationPoint;
+  bool _isSearchingLocation = false;
+  String? _locationError;
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +76,8 @@ class _AddExpensePageState extends State<AddExpensePage>
     _titleCtrl.dispose();
     _amountCtrl.dispose();
     _descCtrl.dispose();
+    _locationCtrl.dispose();
+    _locationDebounce?.cancel();
     _fabController.dispose();
     super.dispose();
   }
@@ -92,6 +107,66 @@ class _AddExpensePageState extends State<AddExpensePage>
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("XLSX/File action tapped")),
     );
+  }
+
+  void _onLocationChanged(String value) {
+    _locationDebounce?.cancel();
+
+    final query = value.trim();
+
+    if (query.isEmpty) {
+      setState(() {
+        _locationPoint = null;
+        _locationError = null;
+        _isSearchingLocation = false;
+      });
+      return;
+    }
+
+    _locationDebounce = Timer(const Duration(milliseconds: 600), () {
+      _searchLocation(query);
+    });
+  }
+
+  Future<void> _searchLocation(String query) async {
+    setState(() {
+      _isSearchingLocation = true;
+      _locationError = null;
+    });
+
+    try {
+      final results = await locationFromAddress(query);
+
+      if (results.isNotEmpty) {
+        final first = results.first;
+        final point = LatLng(first.latitude, first.longitude);
+
+        if (!mounted) return;
+        setState(() {
+          _locationPoint = point;
+          _locationError = null;
+          _isSearchingLocation = false;
+        });
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _mapController.move(point, 15);
+        });
+      } else {
+        if (!mounted) return;
+        setState(() {
+          _locationPoint = null;
+          _locationError = "Location not found";
+          _isSearchingLocation = false;
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _locationPoint = null;
+        _locationError = "Could not find that location";
+        _isSearchingLocation = false;
+      });
+    }
   }
 
   Future<void> _pickDate() async {
@@ -129,6 +204,7 @@ class _AddExpensePageState extends State<AddExpensePage>
       date: _date,
       description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
       paymentMethod: _selectedPayment,
+      location: _locationCtrl.text.trim().isEmpty ? null : _locationCtrl.text.trim(),
     );
 
     await ExpenseDatabase.instance.insertExpense(expense);
@@ -205,6 +281,78 @@ class _AddExpensePageState extends State<AddExpensePage>
                           return null;
                         },
                       ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _locationCtrl,
+                        textInputAction: TextInputAction.next,
+                        onChanged: _onLocationChanged,
+                        decoration: InputDecoration(
+                          labelText: "Location (optional)",
+                          prefixIcon: const Icon(Icons.location_on_outlined),
+                          suffixIcon: _isSearchingLocation
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                )
+                              : (_locationPoint != null
+                                  ? const Icon(Icons.check_circle_outline)
+                                  : null),
+                        ),
+                      ),
+                      if (_locationError != null) ...[
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _locationError!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (_locationPoint != null) ...[
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: SizedBox(
+                            height: 220,
+                            child: FlutterMap(
+                              mapController: _mapController,
+                              options: MapOptions(
+                                initialCenter: _locationPoint!,
+                                initialZoom: 15,
+                              ),
+                              children: [
+                                TileLayer(
+                                  urlTemplate:
+                                      'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                                  userAgentPackageName: 'com.example.app',
+                                ),
+                                MarkerLayer(
+                                  markers: [
+                                    Marker(
+                                      point: _locationPoint!,
+                                      width: 44,
+                                      height: 44,
+                                      child: const Icon(
+                                        Icons.location_pin,
+                                        size: 44,
+                                        color: Colors.red,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       Align(
                         alignment: Alignment.centerLeft,

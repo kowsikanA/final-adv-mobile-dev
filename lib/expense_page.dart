@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'database/expense_database.dart';
 import 'models/expense.dart';
 import 'add_expense.dart';
+import 'expense_detail_page.dart';
 import 'contact_page.dart';
+import 'charts_page.dart';
 
 class ExpensePage extends StatefulWidget {
   const ExpensePage({super.key});
@@ -134,6 +136,7 @@ class _ExpensePageState extends State<ExpensePage> {
           date: expense.date,
           description: expense.description,
           paymentMethod: expense.paymentMethod,
+          location: expense.location,
         ),
       );
       await _loadExpenses();
@@ -205,20 +208,38 @@ class _ExpensePageState extends State<ExpensePage> {
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest.withOpacity(0.65),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      "${_expenses.length} items",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: scheme.onSurface,
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: ScaleTransition(
+                          scale: Tween<double>(
+                            begin: 0.96,
+                            end: 1.0,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Container(
+                      key: ValueKey(_expenses.length),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest.withOpacity(0.65),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        "${_expenses.length} items",
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: scheme.onSurface,
+                        ),
                       ),
                     ),
                   ),
@@ -302,75 +323,151 @@ class _ExpensePageState extends State<ExpensePage> {
                               color: scheme.onErrorContainer,
                             ),
                           ),
-                          child: Card(
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              title: Text(
-                                expense.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              subtitle: Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
+                          child: Hero(
+                            tag: 'expense-card-${expense.id}',
+                            child: Material(
+                              color: Colors.transparent,
+                              child: Card(
+                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                child: ListTile(
+                                  onTap: () {
+                                    HapticFeedback.selectionClick();
+                                    Navigator.push(
+                                      context,
+                                      PageRouteBuilder(
+                                        transitionDuration:
+                                            const Duration(milliseconds: 500),
+                                        reverseTransitionDuration:
+                                            const Duration(milliseconds: 400),
+                                        pageBuilder: (
+                                          context,
+                                          animation,
+                                          secondaryAnimation,
+                                        ) {
+                                          return ExpenseDetailPage(
+                                            expense: expense,
+                                          );
+                                        },
+                                        transitionsBuilder: (
+                                          context,
+                                          animation,
+                                          secondaryAnimation,
+                                          child,
+                                        ) {
+                                          return FadeTransition(
+                                            opacity: animation,
+                                            child: child,
+                                          );
+                                        },
                                       ),
-                                      decoration: BoxDecoration(
-                                        color: _chipColor(
-                                          expense.category,
-                                          scheme,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        expense.category,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          color: scheme.onSurface,
-                                        ),
-                                      ),
+                                    );
+                                  },
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 8,
+                                  ),
+                                  title: Text(
+                                    expense.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
                                     ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: scheme.surfaceContainerHighest
-                                            .withOpacity(0.7),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
+                                  ),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: _chipColor(
+                                                  expense.category,
+                                                  scheme,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                expense.category,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  color: scheme.onSurface,
+                                                ),
+                                              ),
+                                            ),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: scheme
+                                                    .surfaceContainerHighest
+                                                    .withOpacity(0.7),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                              ),
+                                              child: Text(
+                                                expense.paymentMethod,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  color: scheme.onSurface,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                      ),
-                                      child: Text(
-                                        expense.paymentMethod,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          color: scheme.onSurface,
-                                        ),
-                                      ),
+                                        if (expense.location != null &&
+                                            expense.location!.trim().isNotEmpty)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 8),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.location_on_outlined,
+                                                  size: 16,
+                                                  color:
+                                                      scheme.onSurfaceVariant,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Expanded(
+                                                  child: Text(
+                                                    expense.location!,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      color: scheme
+                                                          .onSurfaceVariant,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              ),
-                              trailing: Text(
-                                _money(expense.amount),
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  color: scheme.onSurface,
+                                  ),
+                                  trailing: Text(
+                                    _money(expense.amount),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      color: scheme.onSurface,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
@@ -455,7 +552,11 @@ class _ExpensePageState extends State<ExpensePage> {
                 CircleAvatar(
                   radius: 34,
                   backgroundColor: scheme.primary.withOpacity(0.15),
-                  child: Icon(Icons.person, size: 34, color: scheme.primary),
+                  child: Icon(
+                    Icons.person,
+                    size: 34,
+                    color: scheme.primary,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -495,16 +596,24 @@ class _ExpensePageState extends State<ExpensePage> {
     final scheme = Theme.of(context).colorScheme;
 
     final pages = [
-      _buildHomeTab(scheme),
-      _buildCategoriesTab(scheme),
-      const ContactPage(),
-      _buildProfileTab(scheme),
+    _buildHomeTab(scheme),
+    _buildCategoriesTab(scheme),
+    ChartsPage(expenses: _expenses), // ✅ NEW
+    const ContactPage(),
+    _buildProfileTab(scheme),
+];
+    final titles = [
+      "Expenses",
+      "Categories",
+      "Charts", 
+      "Contact",
+      "Profile",
     ];
 
-    final titles = ["Expenses", "Categories", "Contact", "Profile"];
-
     return Scaffold(
-      appBar: AppBar(title: Text(titles[_selectedIndex])),
+      appBar: AppBar(
+        title: Text(titles[_selectedIndex]),
+      ),
       drawer: Drawer(
         child: SafeArea(
           child: Column(
@@ -526,6 +635,7 @@ class _ExpensePageState extends State<ExpensePage> {
                   setState(() => _selectedIndex = 0);
                 },
               ),
+              
               ListTile(
                 leading: const Icon(Icons.category_outlined),
                 title: const Text("Categories"),
@@ -534,13 +644,20 @@ class _ExpensePageState extends State<ExpensePage> {
                   setState(() => _selectedIndex = 1);
                 },
               ),
-
+              ListTile(
+              leading: const Icon(Icons.bar_chart_outlined),
+              title: const Text("Charts"),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() => _selectedIndex = 2);
+              },
+            ),
               ListTile(
                 leading: const Icon(Icons.contact_mail_outlined),
                 title: const Text("Contact"),
                 onTap: () {
                   Navigator.pop(context);
-                  setState(() => _selectedIndex = 2);
+                  setState(() => _selectedIndex = 3);
                 },
               ),
               ListTile(
@@ -548,7 +665,7 @@ class _ExpensePageState extends State<ExpensePage> {
                 title: const Text("Profile"),
                 onTap: () {
                   Navigator.pop(context);
-                  setState(() => _selectedIndex = 3);
+                  setState(() => _selectedIndex = 4);
                 },
               ),
               const Spacer(),
@@ -585,10 +702,16 @@ class _ExpensePageState extends State<ExpensePage> {
             selectedIcon: Icon(Icons.home),
             label: "Home",
           ),
+          
           NavigationDestination(
             icon: Icon(Icons.category_outlined),
             selectedIcon: Icon(Icons.category),
             label: "Categories",
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: "Charts",
           ),
           NavigationDestination(
             icon: Icon(Icons.contact_mail_outlined),

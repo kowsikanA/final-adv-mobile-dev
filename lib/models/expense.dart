@@ -6,6 +6,7 @@ class Expense{
     DateTime? date;
     String? description;
     String paymentMethod;
+    String? location;
 
     Expense({
             this.id, 
@@ -14,7 +15,8 @@ class Expense{
             required this.category,
             this.date, 
             this.description, 
-            required this.paymentMethod
+            required this.paymentMethod,
+            this.location,
           });
 
     Expense.fromMap(Map<String, dynamic> map)
@@ -26,7 +28,8 @@ class Expense{
           ? DateTime.parse(map["date"] as String)
           : null,
       description = map["description"] as String?,
-      paymentMethod = map["paymentMethod"] as String;
+      paymentMethod = map["paymentMethod"] as String,
+      location = map["location"] as String?;
 
 
     Map<String, dynamic> toMap() {
@@ -37,7 +40,8 @@ class Expense{
             'category': this.category,
             'date' : date?.toIso8601String(),
             'description':  this.description,
-            'paymentMethod' : this.paymentMethod
+            'paymentMethod' : this.paymentMethod,
+            'location': this.location
         };
     }
 }

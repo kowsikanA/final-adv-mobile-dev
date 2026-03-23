@@ -45,7 +45,8 @@ class ExpenseDatabase {
         category TEXT NOT NULL,
         date TEXT NOT NULL,
         description TEXT,
-        paymentMethod TEXT NOT NULL
+        paymentMethod TEXT NOT NULL,
+        location TEXT
       )
     ''');
   }
