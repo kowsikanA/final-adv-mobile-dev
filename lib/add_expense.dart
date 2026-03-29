@@ -1,5 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:csv/csv.dart';
+import 'package:excel/excel.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -101,11 +105,295 @@ class _AddExpensePageState extends State<AddExpensePage>
     );
   }
 
-  void _onFileTap() {
+  Future<void> _onFileTap() async {
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("XLSX/File action tapped")),
-    );
+    await _importExpenseFile();
+  }
+
+  Future<void> _importExpenseFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv', 'xlsx', 'xls'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final picked = result.files.single;
+      final path = picked.path;
+      if (path == null) {
+        throw Exception("Unable to read selected file path.");
+      }
+
+      final extension = (picked.extension ?? '').toLowerCase();
+      final file = File(path);
+
+      List<Map<String, dynamic>> rows = [];
+
+      if (extension == 'csv') {
+        final input = await file.readAsString();
+        final csvTable = CsvToListConverter().convert(input);
+
+        if (csvTable.isEmpty) {
+          throw Exception("CSV file is empty.");
+        }
+
+        final headers = csvTable.first
+            .map((e) => e.toString().trim().toLowerCase())
+            .toList();
+
+        for (int i = 1; i < csvTable.length; i++) {
+          final row = csvTable[i];
+          if (_isRowCompletelyEmpty(row)) continue;
+
+          final data = <String, dynamic>{};
+          for (int j = 0; j < headers.length && j < row.length; j++) {
+            data[headers[j]] = row[j];
+          }
+
+          if (!_looksLikeExpenseRow(data)) continue;
+          rows.add(data);
+        }
+      } else if (extension == 'xlsx' || extension == 'xls') {
+        final bytes = await file.readAsBytes();
+        final excel = Excel.decodeBytes(bytes);
+
+        if (excel.tables.isEmpty) {
+          throw Exception("Excel file has no sheets.");
+        }
+
+        final sheet = excel.tables.values.first;
+
+        if (sheet == null || sheet.rows.isEmpty) {
+          throw Exception("Excel sheet is empty.");
+        }
+
+        final headers = sheet.rows.first
+            .map((cell) => cell?.value.toString().trim().toLowerCase() ?? '')
+            .toList();
+
+        for (int i = 1; i < sheet.rows.length; i++) {
+          final row = sheet.rows[i];
+          if (_isExcelRowEmpty(row)) continue;
+
+          final data = <String, dynamic>{};
+          for (int j = 0; j < headers.length && j < row.length; j++) {
+            data[headers[j]] = row[j]?.value;
+          }
+
+          if (!_looksLikeExpenseRow(data)) continue;
+          rows.add(data);
+        }
+      } else {
+        throw Exception("Unsupported file type.");
+      }
+
+      int importedCount = 0;
+
+      for (final row in rows) {
+        final amount = _parseAmount(
+          _readAny(row, const [
+            'amount',
+            'cost',
+            'price',
+            'expense',
+            r'$',
+            'total'
+          ]),
+        );
+
+        if (amount == null || amount <= 0) {
+          continue;
+        }
+
+        final parsedDate = _parseDate(
+          _readAny(row, const ['date', 'expense date', 'day']),
+        );
+
+        final category = _normalizeCategory(
+          _readAny(row, const ['category', 'type']),
+        );
+
+        final payment = _normalizePaymentMethod(
+          _readAny(row, const ['payment', 'payment method', 'method']),
+        );
+
+        final description =
+            _stringValue(_readAny(row, const ['description', 'details', 'note']));
+
+        final title = _stringValue(
+              _readAny(row, const ['title', 'name', 'item']),
+            ) ??
+            description ??
+            category ??
+            'Imported Expense';
+
+        final expense = Expense(
+          title: title,
+          amount: amount,
+          category: category ?? "Other",
+          date: parsedDate ?? DateTime.now(),
+          description: description,
+          paymentMethod: payment ?? "Cash",
+          location: _stringValue(
+            _readAny(row, const ['location', 'place', 'store']),
+          ),
+        );
+
+        await ExpenseDatabase.instance.insertExpense(expense);
+        importedCount++;
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _isFabOpen = false;
+      });
+      _fabController.reverse();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            importedCount > 0
+                ? "Imported $importedCount expense(s)"
+                : "No valid expense rows found in file",
+          ),
+        ),
+      );
+
+      if (importedCount > 0) {
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Import failed: $e")),
+      );
+    }
+  }
+
+  bool _isRowCompletelyEmpty(List<dynamic> row) {
+    for (final cell in row) {
+      if (cell != null && cell.toString().trim().isNotEmpty) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _isExcelRowEmpty(List<Data?> row) {
+    for (final cell in row) {
+      if (cell?.value != null && cell!.value.toString().trim().isNotEmpty) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _looksLikeExpenseRow(Map<String, dynamic> row) {
+    final joined = row.values.map((e) => e?.toString().toLowerCase() ?? '').join(' ');
+
+    if (joined.contains('total expenses') ||
+        joined.contains('grand total') ||
+        joined.contains('subtotal')) {
+      return false;
+    }
+
+    return true;
+  }
+
+  dynamic _readAny(Map<String, dynamic> row, List<String> possibleKeys) {
+    for (final key in possibleKeys) {
+      for (final existingKey in row.keys) {
+        if (existingKey.trim().toLowerCase() == key.trim().toLowerCase()) {
+          return row[existingKey];
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _stringValue(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    return text;
+  }
+
+  double? _parseAmount(dynamic value) {
+    if (value == null) return null;
+
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return null;
+
+    final cleaned = raw.replaceAll(RegExp(r'[^0-9.\-]'), '');
+    if (cleaned.isEmpty) return null;
+
+    return double.tryParse(cleaned);
+  }
+
+  DateTime? _parseDate(dynamic value) {
+    if (value == null) return null;
+
+    if (value is DateTime) return value;
+
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return null;
+
+    final parsed = DateTime.tryParse(raw);
+    if (parsed != null) return parsed;
+
+    final slashParts = raw.split('/');
+    if (slashParts.length == 3) {
+      final a = int.tryParse(slashParts[0]);
+      final b = int.tryParse(slashParts[1]);
+      final c = int.tryParse(slashParts[2]);
+
+      if (a != null && b != null && c != null) {
+        if (c > 31) {
+          return DateTime(c, a, b);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  String? _normalizeCategory(dynamic value) {
+    final text = _stringValue(value);
+    if (text == null) return null;
+
+    for (final category in _categories) {
+      if (category.toLowerCase() == text.toLowerCase()) {
+        return category;
+      }
+    }
+
+    return text;
+  }
+
+  String? _normalizePaymentMethod(dynamic value) {
+    final text = _stringValue(value);
+    if (text == null) return null;
+
+    for (final method in _paymentMethods) {
+      if (method.toLowerCase() == text.toLowerCase()) {
+        return method;
+      }
+    }
+
+    final lower = text.toLowerCase();
+
+    if (lower.contains('debit')) return 'Debit';
+    if (lower.contains('credit')) return 'Credit';
+    if (lower.contains('cash')) return 'Cash';
+    if (lower.contains('online')) return 'Online';
+
+    return text;
   }
 
   Future<List<_LocationSuggestion>> _fetchLocationSuggestions(
@@ -154,7 +442,6 @@ class _AddExpensePageState extends State<AddExpensePage>
         );
       }
 
-      // remove duplicate labels
       final seen = <String>{};
       return suggestions.where((s) => seen.add(s.label)).toList();
     } catch (_) {
@@ -214,7 +501,8 @@ class _AddExpensePageState extends State<AddExpensePage>
       date: _date,
       description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
       paymentMethod: _selectedPayment,
-      location: _locationCtrl.text.trim().isEmpty ? null : _locationCtrl.text.trim(),
+      location:
+          _locationCtrl.text.trim().isEmpty ? null : _locationCtrl.text.trim(),
     );
 
     await ExpenseDatabase.instance.insertExpense(expense);
@@ -292,7 +580,6 @@ class _AddExpensePageState extends State<AddExpensePage>
                         },
                       ),
                       const SizedBox(height: 12),
-
                       TypeAheadField<_LocationSuggestion>(
                         suggestionsCallback: (pattern) async {
                           setState(() {
@@ -376,7 +663,6 @@ class _AddExpensePageState extends State<AddExpensePage>
                           child: Center(child: CircularProgressIndicator()),
                         ),
                       ),
-
                       if (_locationError != null) ...[
                         const SizedBox(height: 8),
                         Align(
@@ -390,7 +676,6 @@ class _AddExpensePageState extends State<AddExpensePage>
                           ),
                         ),
                       ],
-
                       if (_locationPoint != null) ...[
                         const SizedBox(height: 12),
                         ClipRRect(
@@ -428,7 +713,6 @@ class _AddExpensePageState extends State<AddExpensePage>
                           ),
                         ),
                       ],
-
                       const SizedBox(height: 16),
                       Align(
                         alignment: Alignment.centerLeft,
