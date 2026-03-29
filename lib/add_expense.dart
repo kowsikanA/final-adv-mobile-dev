@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -52,7 +53,6 @@ class _AddExpensePageState extends State<AddExpensePage>
   late AnimationController _fabController;
   late Animation<double> _fabAnimation;
 
-  Timer? _locationDebounce;
   final MapController _mapController = MapController();
   LatLng? _locationPoint;
   bool _isSearchingLocation = false;
@@ -77,7 +77,6 @@ class _AddExpensePageState extends State<AddExpensePage>
     _amountCtrl.dispose();
     _descCtrl.dispose();
     _locationCtrl.dispose();
-    _locationDebounce?.cancel();
     _fabController.dispose();
     super.dispose();
   }
@@ -109,64 +108,75 @@ class _AddExpensePageState extends State<AddExpensePage>
     );
   }
 
-  void _onLocationChanged(String value) {
-    _locationDebounce?.cancel();
-
-    final query = value.trim();
-
-    if (query.isEmpty) {
-      setState(() {
-        _locationPoint = null;
-        _locationError = null;
-        _isSearchingLocation = false;
-      });
-      return;
-    }
-
-    _locationDebounce = Timer(const Duration(milliseconds: 600), () {
-      _searchLocation(query);
-    });
-  }
-
-  Future<void> _searchLocation(String query) async {
-    setState(() {
-      _isSearchingLocation = true;
-      _locationError = null;
-    });
+  Future<List<_LocationSuggestion>> _fetchLocationSuggestions(
+    String pattern,
+  ) async {
+    final query = pattern.trim();
+    if (query.length < 3) return [];
 
     try {
       final results = await locationFromAddress(query);
 
-      if (results.isNotEmpty) {
-        final first = results.first;
-        final point = LatLng(first.latitude, first.longitude);
+      final suggestions = <_LocationSuggestion>[];
 
-        if (!mounted) return;
-        setState(() {
-          _locationPoint = point;
-          _locationError = null;
-          _isSearchingLocation = false;
-        });
+      for (final loc in results.take(5)) {
+        String label =
+            "${loc.latitude.toStringAsFixed(5)}, ${loc.longitude.toStringAsFixed(5)}";
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _mapController.move(point, 15);
-        });
-      } else {
-        if (!mounted) return;
-        setState(() {
-          _locationPoint = null;
-          _locationError = "Location not found";
-          _isSearchingLocation = false;
-        });
+        try {
+          final placemarks = await placemarkFromCoordinates(
+            loc.latitude,
+            loc.longitude,
+          );
+          if (placemarks.isNotEmpty) {
+            final p = placemarks.first;
+            final parts = <String>[
+              if ((p.name ?? "").trim().isNotEmpty) p.name!.trim(),
+              if ((p.locality ?? "").trim().isNotEmpty) p.locality!.trim(),
+              if ((p.administrativeArea ?? "").trim().isNotEmpty)
+                p.administrativeArea!.trim(),
+              if ((p.country ?? "").trim().isNotEmpty) p.country!.trim(),
+            ];
+            if (parts.isNotEmpty) {
+              label = parts.join(", ");
+            }
+          }
+        } catch (_) {
+          // keep fallback lat/lng label
+        }
+
+        suggestions.add(
+          _LocationSuggestion(
+            label: label,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+          ),
+        );
       }
+
+      // remove duplicate labels
+      final seen = <String>{};
+      return suggestions.where((s) => seen.add(s.label)).toList();
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _locationPoint = null;
-        _locationError = "Could not find that location";
-        _isSearchingLocation = false;
-      });
+      return [];
     }
+  }
+
+  Future<void> _selectLocation(_LocationSuggestion suggestion) async {
+    HapticFeedback.selectionClick();
+
+    final point = LatLng(suggestion.latitude, suggestion.longitude);
+
+    setState(() {
+      _locationCtrl.text = suggestion.label;
+      _locationPoint = point;
+      _locationError = null;
+      _isSearchingLocation = false;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _mapController.move(point, 15);
+    });
   }
 
   Future<void> _pickDate() async {
@@ -282,27 +292,91 @@ class _AddExpensePageState extends State<AddExpensePage>
                         },
                       ),
                       const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _locationCtrl,
-                        textInputAction: TextInputAction.next,
-                        onChanged: _onLocationChanged,
-                        decoration: InputDecoration(
-                          labelText: "Location (optional)",
-                          prefixIcon: const Icon(Icons.location_on_outlined),
-                          suffixIcon: _isSearchingLocation
-                              ? const Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  ),
-                                )
-                              : (_locationPoint != null
-                                  ? const Icon(Icons.check_circle_outline)
-                                  : null),
+
+                      TypeAheadField<_LocationSuggestion>(
+                        suggestionsCallback: (pattern) async {
+                          setState(() {
+                            _isSearchingLocation = true;
+                            _locationError = null;
+                          });
+
+                          final items = await _fetchLocationSuggestions(pattern);
+
+                          if (mounted) {
+                            setState(() {
+                              _isSearchingLocation = false;
+                              if (pattern.trim().length >= 3 && items.isEmpty) {
+                                _locationError = "No matching locations found";
+                              } else {
+                                _locationError = null;
+                              }
+                            });
+                          }
+
+                          return items;
+                        },
+                        itemBuilder: (context, suggestion) {
+                          return ListTile(
+                            leading: const Icon(Icons.location_on_outlined),
+                            title: Text(
+                              suggestion.label,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        },
+                        onSelected: _selectLocation,
+                        builder: (context, controller, focusNode) {
+                          if (controller.text != _locationCtrl.text) {
+                            controller.text = _locationCtrl.text;
+                            controller.selection = TextSelection.fromPosition(
+                              TextPosition(offset: controller.text.length),
+                            );
+                          }
+
+                          return TextFormField(
+                            controller: controller,
+                            focusNode: focusNode,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              labelText: "Location (optional)",
+                              prefixIcon: const Icon(Icons.location_on_outlined),
+                              suffixIcon: _isSearchingLocation
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                    )
+                                  : (_locationPoint != null
+                                      ? const Icon(Icons.check_circle_outline)
+                                      : null),
+                            ),
+                            onChanged: (value) {
+                              _locationCtrl.text = value;
+                              if (value.trim().isEmpty) {
+                                setState(() {
+                                  _locationPoint = null;
+                                  _locationError = null;
+                                });
+                              }
+                            },
+                          );
+                        },
+                        emptyBuilder: (context) => const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text("No matching locations"),
+                        ),
+                        loadingBuilder: (context) => const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Center(child: CircularProgressIndicator()),
                         ),
                       ),
+
                       if (_locationError != null) ...[
                         const SizedBox(height: 8),
                         Align(
@@ -316,6 +390,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                           ),
                         ),
                       ],
+
                       if (_locationPoint != null) ...[
                         const SizedBox(height: 12),
                         ClipRRect(
@@ -353,6 +428,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                           ),
                         ),
                       ],
+
                       const SizedBox(height: 16),
                       Align(
                         alignment: Alignment.centerLeft,
@@ -561,4 +637,16 @@ class _AddExpensePageState extends State<AddExpensePage>
       ),
     );
   }
+}
+
+class _LocationSuggestion {
+  final String label;
+  final double latitude;
+  final double longitude;
+
+  const _LocationSuggestion({
+    required this.label,
+    required this.latitude,
+    required this.longitude,
+  });
 }
