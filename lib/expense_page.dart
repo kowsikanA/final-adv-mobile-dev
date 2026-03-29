@@ -8,6 +8,7 @@ import 'add_expense.dart';
 import 'expense_detail_page.dart';
 import 'contact_page.dart';
 import 'charts_page.dart';
+import 'ai_chat_page.dart';
 
 class ExpensePage extends StatefulWidget {
   const ExpensePage({super.key});
@@ -22,9 +23,14 @@ class _ExpensePageState extends State<ExpensePage> {
   int _listAnimationSeed = 0;
   int _selectedIndex = 0;
 
+  late final AiChatPage _aiChatPage;
+  late final ContactPage _contactPage;
+
   @override
   void initState() {
     super.initState();
+    _aiChatPage = const AiChatPage();
+    _contactPage = const ContactPage();
     _loadExpenses();
   }
 
@@ -596,16 +602,19 @@ class _ExpensePageState extends State<ExpensePage> {
     final scheme = Theme.of(context).colorScheme;
 
     final pages = [
-    _buildHomeTab(scheme),
-    _buildCategoriesTab(scheme),
-    ChartsPage(expenses: _expenses), // ✅ NEW
-    const ContactPage(),
-    _buildProfileTab(scheme),
-];
+      _buildHomeTab(scheme),
+      _buildCategoriesTab(scheme),
+      ChartsPage(expenses: _expenses),
+      _aiChatPage,
+      _contactPage,
+      _buildProfileTab(scheme),
+    ];
+
     final titles = [
       "Expenses",
       "Categories",
-      "Charts", 
+      "Charts",
+      "AI Chat",
       "Contact",
       "Profile",
     ];
@@ -635,7 +644,6 @@ class _ExpensePageState extends State<ExpensePage> {
                   setState(() => _selectedIndex = 0);
                 },
               ),
-              
               ListTile(
                 leading: const Icon(Icons.category_outlined),
                 title: const Text("Categories"),
@@ -645,19 +653,27 @@ class _ExpensePageState extends State<ExpensePage> {
                 },
               ),
               ListTile(
-              leading: const Icon(Icons.bar_chart_outlined),
-              title: const Text("Charts"),
-              onTap: () {
-                Navigator.pop(context);
-                setState(() => _selectedIndex = 2);
-              },
-            ),
+                leading: const Icon(Icons.bar_chart_outlined),
+                title: const Text("Charts"),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _selectedIndex = 2);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.smart_toy_outlined),
+                title: const Text("AI Chat"),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _selectedIndex = 3);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.contact_mail_outlined),
                 title: const Text("Contact"),
                 onTap: () {
                   Navigator.pop(context);
-                  setState(() => _selectedIndex = 3);
+                  setState(() => _selectedIndex = 4);
                 },
               ),
               ListTile(
@@ -665,7 +681,7 @@ class _ExpensePageState extends State<ExpensePage> {
                 title: const Text("Profile"),
                 onTap: () {
                   Navigator.pop(context);
-                  setState(() => _selectedIndex = 4);
+                  setState(() => _selectedIndex = 5);
                 },
               ),
               const Spacer(),
@@ -682,7 +698,10 @@ class _ExpensePageState extends State<ExpensePage> {
           ),
         ),
       ),
-      body: pages[_selectedIndex],
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: pages,
+      ),
       floatingActionButton: _selectedIndex == 0
           ? FloatingActionButton.extended(
               onPressed: _addExpense,
@@ -702,7 +721,6 @@ class _ExpensePageState extends State<ExpensePage> {
             selectedIcon: Icon(Icons.home),
             label: "Home",
           ),
-          
           NavigationDestination(
             icon: Icon(Icons.category_outlined),
             selectedIcon: Icon(Icons.category),
@@ -712,6 +730,11 @@ class _ExpensePageState extends State<ExpensePage> {
             icon: Icon(Icons.bar_chart_outlined),
             selectedIcon: Icon(Icons.bar_chart),
             label: "Charts",
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.smart_toy_outlined),
+            selectedIcon: Icon(Icons.smart_toy),
+            label: "AI",
           ),
           NavigationDestination(
             icon: Icon(Icons.contact_mail_outlined),
