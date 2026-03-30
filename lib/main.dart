@@ -75,7 +75,7 @@ class MyApp extends StatelessWidget {
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: scheme.surfaceContainerHighest.withOpacity(0.55),
+          fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none,

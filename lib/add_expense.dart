@@ -14,8 +14,19 @@ import 'package:latlong2/latlong.dart';
 import 'database/expense_database.dart';
 import 'models/expense.dart';
 
+/// Form page for adding, editing, or duplicating expenses.
+/// - [initialExpense] is null for new entries, or contains the expense to edit/duplicate
+/// - [duplicateMode] is true when creating a copy (ignores ID, creates new entry)
+/// Determined by [_isEditing] getter: true when initialExpense exists AND duplicateMode is false
 class AddExpensePage extends StatefulWidget {
-  const AddExpensePage({super.key});
+  final Expense? initialExpense;
+  final bool duplicateMode;
+
+  const AddExpensePage({
+    super.key,
+    this.initialExpense,
+    this.duplicateMode = false,
+  });
 
   @override
   State<AddExpensePage> createState() => _AddExpensePageState();
@@ -62,6 +73,13 @@ class _AddExpensePageState extends State<AddExpensePage>
   bool _isSearchingLocation = false;
   String? _locationError;
 
+  bool get _isEditing =>
+      widget.initialExpense != null && widget.duplicateMode == false;
+
+  /// Initializes the form with values from [initialExpense] if provided.
+  /// For edit mode: populates all fields for in-place modification
+  /// For duplicate mode: pre-fills values but creates a new entry (no ID)
+  /// For add mode: starts with empty form and today's date
   @override
   void initState() {
     super.initState();
@@ -73,6 +91,22 @@ class _AddExpensePageState extends State<AddExpensePage>
       parent: _fabController,
       curve: Curves.easeOut,
     );
+
+    final initial = widget.initialExpense;
+    if (initial != null) {
+      _titleCtrl.text = initial.title;
+      _amountCtrl.text = initial.amount.toStringAsFixed(2);
+      _descCtrl.text = initial.description ?? '';
+      _locationCtrl.text = initial.location ?? '';
+      _date = initial.date ?? DateTime.now();
+      _selectedCategory = _categories.contains(initial.category)
+          ? initial.category
+          : 'Other';
+      _selectedPayment = _paymentMethods.contains(initial.paymentMethod)
+          ? initial.paymentMethod
+          : 'Cash';
+      _showDescription = _descCtrl.text.trim().isNotEmpty;
+    }
   }
 
   @override
@@ -110,6 +144,12 @@ class _AddExpensePageState extends State<AddExpensePage>
     await _importExpenseFile();
   }
 
+  /// Imports expenses from a CSV or Excel file (xlsx/xls).
+  /// Collects all parsed expenses into a list, then inserts them atomically
+  /// using [insertExpenses] with a database transaction for performance.
+  /// Auto-detects flexible column names (e.g., 'amount'/'cost'/'price', 'date'/'expense date').
+  /// Validates amounts > 0 and skips invalid rows silently.
+  /// Shows snackbar with count of successfully imported expenses.
   Future<void> _importExpenseFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -166,8 +206,7 @@ class _AddExpensePageState extends State<AddExpensePage>
         }
 
         final sheet = excel.tables.values.first;
-
-        if (sheet == null || sheet.rows.isEmpty) {
+        if (sheet.rows.isEmpty) {
           throw Exception("Excel sheet is empty.");
         }
 
@@ -191,7 +230,7 @@ class _AddExpensePageState extends State<AddExpensePage>
         throw Exception("Unsupported file type.");
       }
 
-      int importedCount = 0;
+      final toImport = <Expense>[];
 
       for (final row in rows) {
         final amount = _parseAmount(
@@ -231,7 +270,8 @@ class _AddExpensePageState extends State<AddExpensePage>
             category ??
             'Imported Expense';
 
-        final expense = Expense(
+        toImport.add(
+          Expense(
           title: title,
           amount: amount,
           category: category ?? "Other",
@@ -241,11 +281,12 @@ class _AddExpensePageState extends State<AddExpensePage>
           location: _stringValue(
             _readAny(row, const ['location', 'place', 'store']),
           ),
+          ),
         );
-
-        await ExpenseDatabase.instance.insertExpense(expense);
-        importedCount++;
       }
+
+      await ExpenseDatabase.instance.insertExpenses(toImport);
+      final importedCount = toImport.length;
 
       if (!mounted) return;
 
@@ -482,19 +523,26 @@ class _AddExpensePageState extends State<AddExpensePage>
     }
   }
 
+  /// Saves the expense to the database.
+  /// Action depends on mode:
+  /// - Edit mode ([_isEditing]): calls [updateExpense] to modify existing entry
+  /// - Add/Duplicate mode: calls [insertExpense] to create new entry (ID will be null)
+  /// Validates amount > 0 before saving.
+  /// Returns true to parent via Navigator.pop() to trigger list refresh.
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
     final amount = double.tryParse(_amountCtrl.text.trim());
-    if (amount == null) {
+    if (amount == null || amount <= 0) {
       HapticFeedback.heavyImpact();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Amount must be a number")),
+        const SnackBar(content: Text("Amount must be greater than 0")),
       );
       return;
     }
 
     final expense = Expense(
+      id: _isEditing ? widget.initialExpense!.id : null,
       title: _titleCtrl.text.trim(),
       amount: amount,
       category: _selectedCategory,
@@ -505,7 +553,11 @@ class _AddExpensePageState extends State<AddExpensePage>
           _locationCtrl.text.trim().isEmpty ? null : _locationCtrl.text.trim(),
     );
 
-    await ExpenseDatabase.instance.insertExpense(expense);
+    if (_isEditing) {
+      await ExpenseDatabase.instance.updateExpense(expense);
+    } else {
+      await ExpenseDatabase.instance.insertExpense(expense);
+    }
 
     HapticFeedback.mediumImpact();
     if (!mounted) return;
@@ -533,7 +585,11 @@ class _AddExpensePageState extends State<AddExpensePage>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Add Expense"),
+        title: Text(
+          _isEditing
+              ? 'Edit Expense'
+              : (widget.duplicateMode ? 'Duplicate Expense' : 'Add Expense'),
+        ),
       ),
       body: SafeArea(
         child: ListView(
@@ -838,87 +894,89 @@ class _AddExpensePageState extends State<AddExpensePage>
           ],
         ),
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (_isFabOpen) ...[
-            Row(
+      floatingActionButton: _isEditing
+          ? null
+          : Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 8,
+                if (_isFabOpen) ...[
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scheme.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: const Text(
+                          "Import File",
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      _buildMiniFab(
+                        icon: Icons.description_outlined,
+                        heroTag: "file_fab",
+                        onPressed: _onFileTap,
                       ),
                     ],
                   ),
-                  child: const Text(
-                    "Import File",
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                _buildMiniFab(
-                  icon: Icons.description_outlined,
-                  heroTag: "file_fab",
-                  onPressed: _onFileTap,
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.surface,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.08),
-                        blurRadius: 8,
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scheme.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                        child: const Text(
+                          "Scan Receipt",
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      _buildMiniFab(
+                        icon: Icons.camera_alt_outlined,
+                        heroTag: "camera_fab",
+                        onPressed: _onCameraTap,
                       ),
                     ],
                   ),
-                  child: const Text(
-                    "Scan Receipt",
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  const SizedBox(height: 10),
+                ],
+                FloatingActionButton(
+                  heroTag: "main_expandable_fab",
+                  onPressed: _toggleFab,
+                  child: AnimatedRotation(
+                    turns: _isFabOpen ? 0.125 : 0,
+                    duration: const Duration(milliseconds: 220),
+                    child: Icon(_isFabOpen ? Icons.close : Icons.add),
                   ),
-                ),
-                _buildMiniFab(
-                  icon: Icons.camera_alt_outlined,
-                  heroTag: "camera_fab",
-                  onPressed: _onCameraTap,
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-          ],
-          FloatingActionButton(
-            heroTag: "main_expandable_fab",
-            onPressed: _toggleFab,
-            child: AnimatedRotation(
-              turns: _isFabOpen ? 0.125 : 0,
-              duration: const Duration(milliseconds: 220),
-              child: Icon(_isFabOpen ? Icons.close : Icons.add),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

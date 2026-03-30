@@ -31,17 +31,41 @@ class Expense{
       paymentMethod = map["paymentMethod"] as String,
       location = map["location"] as String?;
 
+    /// Creates a copy of this Expense with the given fields replaced.
+    /// Used for edit/duplicate workflows to avoid mutating the original expense.
+    Expense copyWith({
+            int? id,
+            String? title,
+            double? amount,
+            String? category,
+            DateTime? date,
+            String? description,
+            String? paymentMethod,
+            String? location,
+        }) {
+            return Expense(
+                id: id ?? this.id,
+                title: title ?? this.title,
+                amount: amount ?? this.amount,
+                category: category ?? this.category,
+                date: date ?? this.date,
+                description: description ?? this.description,
+                paymentMethod: paymentMethod ?? this.paymentMethod,
+                location: location ?? this.location,
+            );
+        }
+
 
     Map<String, dynamic> toMap() {
         return{
-            'id' :  this.id,
-            'title' : this.title,
-            'amount' : this.amount,
-            'category': this.category,
+              'id' :  id,
+              'title' : title,
+              'amount' : amount,
+              'category': category,
             'date' : date?.toIso8601String(),
-            'description':  this.description,
-            'paymentMethod' : this.paymentMethod,
-            'location': this.location
+              'description':  description,
+              'paymentMethod' : paymentMethod,
+              'location': location
         };
     }
 }

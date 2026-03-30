@@ -16,7 +16,7 @@ class ContactPage extends StatelessWidget {
       return Card(
         child: ListTile(
           leading: CircleAvatar(
-            backgroundColor: scheme.primary.withOpacity(0.12),
+            backgroundColor: scheme.primary.withValues(alpha: 0.12),
             child: Icon(icon, color: scheme.primary),
           ),
           title: Text(
@@ -41,7 +41,7 @@ class ContactPage extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 34,
-                  backgroundColor: scheme.primary.withOpacity(0.15),
+                  backgroundColor: scheme.primary.withValues(alpha: 0.15),
                   child: Icon(
                     Icons.support_agent,
                     size: 34,

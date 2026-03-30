@@ -206,7 +206,7 @@ class ChartsPage extends StatelessWidget {
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: scheme.surfaceContainerHighest.withOpacity(0.55),
+                          color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Row(
@@ -275,7 +275,7 @@ class ChartsPage extends StatelessWidget {
                           drawVerticalLine: false,
                           getDrawingHorizontalLine: (value) {
                             return FlLine(
-                              color: scheme.outlineVariant.withOpacity(0.35),
+                              color: scheme.outlineVariant.withValues(alpha: 0.35),
                               strokeWidth: 1,
                             );
                           },
@@ -389,7 +389,7 @@ class ChartsPage extends StatelessWidget {
                           drawVerticalLine: false,
                           getDrawingHorizontalLine: (value) {
                             return FlLine(
-                              color: scheme.outlineVariant.withOpacity(0.35),
+                              color: scheme.outlineVariant.withValues(alpha: 0.35),
                               strokeWidth: 1,
                             );
                           },
@@ -462,7 +462,7 @@ class ChartsPage extends StatelessWidget {
                             ),
                             belowBarData: BarAreaData(
                               show: true,
-                              color: scheme.primary.withOpacity(0.12),
+                              color: scheme.primary.withValues(alpha: 0.12),
                             ),
                             spots: List.generate(dailyKeys.length, (index) {
                               return FlSpot(

@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'add_expense.dart';
 import 'models/expense.dart';
 
 class ExpenseDetailPage extends StatefulWidget {
@@ -79,6 +80,28 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
     return date.toLocal().toString().split(' ').first;
   }
 
+  /// Navigates to the expense editor form.
+  /// [duplicate] controls whether this is an edit or duplicate operation:
+  /// - If false: edits the existing expense in-place (updateExpense)
+  /// - If true: creates a copy of the expense as a new entry (insertExpense, no ID)
+  /// Awaits the editor's return value (true if changes were made).
+  /// If changes were made, pops this detail page to refresh the parent list.
+  Future<void> _openEditor({required bool duplicate}) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AddExpensePage(
+          initialExpense: widget.expense,
+          duplicateMode: duplicate,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (changed == true) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
   Widget _buildInfoRow({
     required BuildContext context,
     required IconData icon,
@@ -95,7 +118,7 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: color),
@@ -144,6 +167,21 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
             pinned: true,
             backgroundColor: scheme.primary,
             foregroundColor: scheme.onPrimary,
+            // Action buttons for editing and duplicating expenses
+            // Duplicate: Creates a copy of this expense as a new entry
+            // Edit: Modifies the current expense in-place
+            actions: [
+              IconButton(
+                tooltip: 'Duplicate expense',
+                onPressed: () => _openEditor(duplicate: true),
+                icon: const Icon(Icons.copy_all_outlined),
+              ),
+              IconButton(
+                tooltip: 'Edit expense',
+                onPressed: () => _openEditor(duplicate: false),
+                icon: const Icon(Icons.edit_outlined),
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Center(
                 child: Hero(
@@ -156,7 +194,7 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
                       margin: const EdgeInsets.only(top: 40),
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.18),
+                        color: Colors.white.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(26),
                       ),
                       child: Column(

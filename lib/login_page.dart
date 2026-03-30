@@ -107,9 +107,9 @@
 //                   begin: Alignment.topLeft,
 //                   end: Alignment.bottomRight,
 //                   colors: [
-//                     scheme.primary.withOpacity(0.18),
+//                     scheme.primary.withValues(alpha: 0.18),
 //                     scheme.surface,
-//                     scheme.secondary.withOpacity(0.10),
+//                     scheme.secondary.withValues(alpha: 0.10),
 //                   ],
 //                 ),
 //               ),
@@ -126,16 +126,16 @@
 //                     curve: Curves.easeOut,
 //                     padding: const EdgeInsets.all(18),
 //                     decoration: BoxDecoration(
-//                       color: scheme.surface.withOpacity(0.90),
+//                       color: scheme.surface.withValues(alpha: 0.90),
 //                       borderRadius: BorderRadius.circular(22),
 //                       border: Border.all(
-//                         color: scheme.outlineVariant.withOpacity(0.55),
+//                         color: scheme.outlineVariant.withValues(alpha: 0.55),
 //                       ),
 //                       boxShadow: [
 //                         BoxShadow(
 //                           blurRadius: 18,
 //                           offset: const Offset(0, 10),
-//                           color: Colors.black.withOpacity(0.06),
+//                           color: Colors.black.withValues(alpha: 0.06),
 //                         ),
 //                       ],
 //                     ),
@@ -149,7 +149,7 @@
 //                               width: 44,
 //                               height: 44,
 //                               decoration: BoxDecoration(
-//                                 color: scheme.primary.withOpacity(0.14),
+//                                 color: scheme.primary.withValues(alpha: 0.14),
 //                                 borderRadius: BorderRadius.circular(14),
 //                               ),
 //                               child: Icon(
@@ -471,9 +471,9 @@ class _LoginPageState extends State<LoginPage> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    scheme.primary.withOpacity(0.18),
+                    scheme.primary.withValues(alpha: 0.18),
                     scheme.surface,
-                    scheme.secondary.withOpacity(0.10),
+                    scheme.secondary.withValues(alpha: 0.10),
                   ],
                 ),
               ),
@@ -488,16 +488,16 @@ class _LoginPageState extends State<LoginPage> {
                   child: Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: scheme.surface.withOpacity(0.90),
+                      color: scheme.surface.withValues(alpha: 0.90),
                       borderRadius: BorderRadius.circular(22),
                       border: Border.all(
-                        color: scheme.outlineVariant.withOpacity(0.55),
+                        color: scheme.outlineVariant.withValues(alpha: 0.55),
                       ),
                       boxShadow: [
                         BoxShadow(
                           blurRadius: 18,
                           offset: const Offset(0, 10),
-                          color: Colors.black.withOpacity(0.06),
+                          color: Colors.black.withValues(alpha: 0.06),
                         ),
                       ],
                     ),

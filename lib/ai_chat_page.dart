@@ -137,7 +137,7 @@ class _AiChatPageState extends State<AiChatPage>
         decoration: BoxDecoration(
           color: isUser
               ? scheme.primaryContainer
-              : scheme.surfaceContainerHighest.withOpacity(0.75),
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.75),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Text(
@@ -207,7 +207,7 @@ class _AiChatPageState extends State<AiChatPage>
                       vertical: 10,
                     ),
                     decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest.withOpacity(0.75),
+                      color: scheme.surfaceContainerHighest.withValues(alpha: 0.75),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
