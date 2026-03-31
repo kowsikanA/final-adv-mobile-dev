@@ -727,7 +727,33 @@ class _ExpensePageState extends State<ExpensePage> {
     await _loadExpenses();
   }
 
-  /// Exports this month's expenses as a CSV file to the device's temp directory.
+  Future<Directory> _getExportDirectory() async {
+    Directory? baseDirectory;
+
+    if (Platform.isAndroid) {
+      final downloadDirectories = await getExternalStorageDirectories(
+        type: StorageDirectory.downloads,
+      );
+      if (downloadDirectories != null && downloadDirectories.isNotEmpty) {
+        baseDirectory = downloadDirectories.first;
+      } else {
+        baseDirectory = await getExternalStorageDirectory();
+      }
+    } else if (Platform.isIOS) {
+      baseDirectory = await getApplicationDocumentsDirectory();
+    } else {
+      baseDirectory = await getDownloadsDirectory();
+      baseDirectory ??= await getApplicationDocumentsDirectory();
+    }
+
+    final exportDirectory = Directory('${baseDirectory!.path}/Wealtha Exports');
+    if (!await exportDirectory.exists()) {
+      await exportDirectory.create(recursive: true);
+    }
+    return exportDirectory;
+  }
+
+  /// Exports this month's expenses as a CSV file to a persistent local folder on the device.
   /// Columns: Date, Title, Category, Payment, Amount, Location, Description.
   /// File is saved as: expense-report-yyyy-MM.csv
   /// Shows a snackbar with the file path on successful export.
@@ -760,7 +786,7 @@ class _ExpensePageState extends State<ExpensePage> {
     ];
 
     final csvData = const ListToCsvConverter().convert(rows);
-    final dir = await getTemporaryDirectory();
+    final dir = await _getExportDirectory();
     final path = '${dir.path}/expense-report-${DateFormat('yyyy-MM').format(now)}.csv';
     await File(path).writeAsString(csvData);
 
@@ -770,7 +796,7 @@ class _ExpensePageState extends State<ExpensePage> {
     );
   }
 
-  /// Exports this month's expenses as a PDF report to the device's temp directory.
+  /// Exports this month's expenses as a PDF report to a persistent local folder on the device.
   /// PDF contains: total spending, category breakdown table, daily totals table.
   /// File is saved as: expense-report-yyyy-MM.pdf
   /// Shows a snackbar with the file path on successful export.
@@ -830,7 +856,7 @@ class _ExpensePageState extends State<ExpensePage> {
       ),
     );
 
-    final dir = await getTemporaryDirectory();
+    final dir = await _getExportDirectory();
     final path = '${dir.path}/expense-report-${DateFormat('yyyy-MM').format(now)}.pdf';
     final bytes = await doc.save();
     await File(path).writeAsBytes(bytes);
