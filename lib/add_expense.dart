@@ -9,15 +9,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:google_mlkit_entity_extraction/google_mlkit_entity_extraction.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'database/expense_database.dart';
 import 'models/expense.dart';
 
-/// Form page for adding, editing, or duplicating expenses.
-/// - [initialExpense] is null for new entries, or contains the expense to edit/duplicate
-/// - [duplicateMode] is true when creating a copy (ignores ID, creates new entry)
-/// Determined by [_isEditing] getter: true when initialExpense exists AND duplicateMode is false
 class AddExpensePage extends StatefulWidget {
   final Expense? initialExpense;
   final bool duplicateMode;
@@ -40,6 +39,8 @@ class _AddExpensePageState extends State<AddExpensePage>
   final _amountCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
+
+  final ImagePicker _imagePicker = ImagePicker();
 
   DateTime? _date = DateTime.now();
 
@@ -73,13 +74,12 @@ class _AddExpensePageState extends State<AddExpensePage>
   bool _isSearchingLocation = false;
   String? _locationError;
 
+  bool _isScanningReceipt = false;
+  String? _scannedRawText;
+
   bool get _isEditing =>
       widget.initialExpense != null && widget.duplicateMode == false;
 
-  /// Initializes the form with values from [initialExpense] if provided.
-  /// For edit mode: populates all fields for in-place modification
-  /// For duplicate mode: pre-fills values but creates a new entry (no ID)
-  /// For add mode: starts with empty form and today's date
   @override
   void initState() {
     super.initState();
@@ -106,6 +106,15 @@ class _AddExpensePageState extends State<AddExpensePage>
           ? initial.paymentMethod
           : 'Cash';
       _showDescription = _descCtrl.text.trim().isNotEmpty;
+
+      if ((initial.location ?? '').trim().isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          final suggestions = await _fetchLocationSuggestions(initial.location!);
+          if (suggestions.isNotEmpty && mounted) {
+            await _selectLocation(suggestions.first);
+          }
+        });
+      }
     }
   }
 
@@ -132,24 +141,78 @@ class _AddExpensePageState extends State<AddExpensePage>
     }
   }
 
-  void _onCameraTap() {
+  Future<void> _onCameraTap() async {
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Camera action tapped")),
-    );
+
+    setState(() {
+      _isFabOpen = false;
+    });
+    _fabController.reverse();
+
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) return;
+
+      if (!mounted) return;
+      setState(() {
+        _isScanningReceipt = true;
+      });
+
+      final inputImage = InputImage.fromFilePath(pickedFile.path);
+
+      final textRecognizer = TextRecognizer(
+        script: TextRecognitionScript.latin,
+      );
+
+      final recognizedText = await textRecognizer.processImage(inputImage);
+      await textRecognizer.close();
+
+      final extractedText = recognizedText.text;
+      _scannedRawText = extractedText;
+
+      if (_descCtrl.text.trim().isEmpty && extractedText.trim().isNotEmpty) {
+        _descCtrl.text = extractedText;
+        _showDescription = true;
+      }
+
+      await _extractExpenseFieldsFromText(extractedText);
+
+      HapticFeedback.mediumImpact();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Receipt scanned successfully")),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Scan failed: $e")),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isScanningReceipt = false;
+        });
+      }
+    }
   }
 
   Future<void> _onFileTap() async {
     HapticFeedback.lightImpact();
+
+    setState(() {
+      _isFabOpen = false;
+    });
+    _fabController.reverse();
+
     await _importExpenseFile();
   }
 
-  /// Imports expenses from a CSV or Excel file (xlsx/xls).
-  /// Collects all parsed expenses into a list, then inserts them atomically
-  /// using [insertExpenses] with a database transaction for performance.
-  /// Auto-detects flexible column names (e.g., 'amount'/'cost'/'price', 'date'/'expense date').
-  /// Validates amounts > 0 and skips invalid rows silently.
-  /// Shows snackbar with count of successfully imported expenses.
   Future<void> _importExpenseFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -244,20 +307,10 @@ class _AddExpensePageState extends State<AddExpensePage>
           ]),
         );
 
-        if (amount == null || amount <= 0) {
-          continue;
-        }
+        if (amount == null || amount <= 0) continue;
 
         final parsedDate = _parseDate(
           _readAny(row, const ['date', 'expense date', 'day']),
-        );
-
-        final category = _normalizeCategory(
-          _readAny(row, const ['category', 'type']),
-        );
-
-        final payment = _normalizePaymentMethod(
-          _readAny(row, const ['payment', 'payment method', 'method']),
         );
 
         final description =
@@ -267,20 +320,37 @@ class _AddExpensePageState extends State<AddExpensePage>
               _readAny(row, const ['title', 'name', 'item']),
             ) ??
             description ??
-            category ??
             'Imported Expense';
+
+        final categoryText = _stringValue(
+          _readAny(row, const ['category', 'type']),
+        );
+
+        final paymentText = _stringValue(
+          _readAny(row, const ['payment', 'payment method', 'method']),
+        );
+
+        final locationText = _stringValue(
+          _readAny(row, const ['location', 'place', 'store']),
+        );
+
+        final combinedText = [
+          title,
+          if (description != null) description,
+          if (locationText != null) locationText,
+          if (categoryText != null) categoryText,
+        ].join('\n');
 
         toImport.add(
           Expense(
-          title: title,
-          amount: amount,
-          category: category ?? "Other",
-          date: parsedDate ?? DateTime.now(),
-          description: description,
-          paymentMethod: payment ?? "Cash",
-          location: _stringValue(
-            _readAny(row, const ['location', 'place', 'store']),
-          ),
+            title: title,
+            amount: amount,
+            category: _normalizeCategory(categoryText) ??
+                _inferCategoryFromReceipt(combinedText),
+            date: parsedDate ?? DateTime.now(),
+            description: description,
+            paymentMethod: _normalizePaymentMethod(paymentText) ?? "Cash",
+            location: locationText,
           ),
         );
       }
@@ -289,11 +359,6 @@ class _AddExpensePageState extends State<AddExpensePage>
       final importedCount = toImport.length;
 
       if (!mounted) return;
-
-      setState(() {
-        _isFabOpen = false;
-      });
-      _fabController.reverse();
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -337,13 +402,11 @@ class _AddExpensePageState extends State<AddExpensePage>
 
   bool _looksLikeExpenseRow(Map<String, dynamic> row) {
     final joined = row.values.map((e) => e?.toString().toLowerCase() ?? '').join(' ');
-
     if (joined.contains('total expenses') ||
         joined.contains('grand total') ||
         joined.contains('subtotal')) {
       return false;
     }
-
     return true;
   }
 
@@ -379,24 +442,79 @@ class _AddExpensePageState extends State<AddExpensePage>
 
   DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
-
     if (value is DateTime) return value;
 
-    final raw = value.toString().trim();
+    var raw = value.toString().trim();
     if (raw.isEmpty) return null;
 
-    final parsed = DateTime.tryParse(raw);
-    if (parsed != null) return parsed;
+    raw = raw.replaceAll('O', '0').replaceAll('o', '0');
 
-    final slashParts = raw.split('/');
+    final direct = DateTime.tryParse(raw);
+    if (direct != null) return direct;
+
+    final match = RegExp(
+      r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{2}\.\d{2}\.\d{2,4}|\d{4}-\d{2}-\d{2})',
+    ).firstMatch(raw);
+
+    final dateOnly = match != null ? match.group(0)! : raw;
+
+    final slashParts = dateOnly.split('/');
     if (slashParts.length == 3) {
-      final a = int.tryParse(slashParts[0]);
-      final b = int.tryParse(slashParts[1]);
-      final c = int.tryParse(slashParts[2]);
+      final month = int.tryParse(slashParts[0]);
+      final day = int.tryParse(slashParts[1]);
+      var year = int.tryParse(slashParts[2]);
 
-      if (a != null && b != null && c != null) {
-        if (c > 31) {
-          return DateTime(c, a, b);
+      if (month != null && day != null && year != null) {
+        if (year < 100) {
+          year += (year >= 70) ? 1900 : 2000;
+        }
+
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          return DateTime(year, month, day);
+        }
+      }
+    }
+
+    final dashParts = dateOnly.split('-');
+    if (dashParts.length == 3) {
+      final y1 = int.tryParse(dashParts[0]);
+      final m1 = int.tryParse(dashParts[1]);
+      final d1 = int.tryParse(dashParts[2]);
+
+      if (y1 != null && m1 != null && d1 != null) {
+        if (y1 > 999 && m1 >= 1 && m1 <= 12 && d1 >= 1 && d1 <= 31) {
+          return DateTime(y1, m1, d1);
+        }
+      }
+
+      final day = int.tryParse(dashParts[0]);
+      final month = int.tryParse(dashParts[1]);
+      var year = int.tryParse(dashParts[2]);
+
+      if (day != null && month != null && year != null) {
+        if (year < 100) {
+          year += (year >= 70) ? 1900 : 2000;
+        }
+
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          return DateTime(year, month, day);
+        }
+      }
+    }
+
+    final dotParts = dateOnly.split('.');
+    if (dotParts.length == 3) {
+      final day = int.tryParse(dotParts[0]);
+      final month = int.tryParse(dotParts[1]);
+      var year = int.tryParse(dotParts[2]);
+
+      if (day != null && month != null && year != null) {
+        if (year < 100) {
+          year += (year >= 70) ? 1900 : 2000;
+        }
+
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          return DateTime(year, month, day);
         }
       }
     }
@@ -428,13 +546,419 @@ class _AddExpensePageState extends State<AddExpensePage>
     }
 
     final lower = text.toLowerCase();
-
     if (lower.contains('debit')) return 'Debit';
     if (lower.contains('credit')) return 'Credit';
     if (lower.contains('cash')) return 'Cash';
     if (lower.contains('online')) return 'Online';
 
     return text;
+  }
+
+  String _normalizeReceiptText(String text) {
+    return text
+        .replaceAll('O', '0')
+        .replaceAll('o', '0')
+        .replaceAll('SFr', 'CHF');
+  }
+
+  bool _looksLikeNonTitleLine(String line) {
+    final lower = line.toLowerCase();
+
+    return lower.contains('receipt') ||
+        lower.contains('sales receipt') ||
+        lower.contains('invoice') ||
+        lower.contains('approval #') ||
+        lower.contains('transaction #') ||
+        lower.contains('account #') ||
+        lower.contains('paid by') ||
+        lower.contains('table') ||
+        lower.contains('tisch') ||
+        lower.contains('total') ||
+        lower.contains('subtotal') ||
+        lower.contains('tax') ||
+        lower.contains('mwst') ||
+        lower.contains('tel') ||
+        lower.contains('fax') ||
+        lower.contains('email') ||
+        RegExp(r'^\d[\d/\-:. ]+$').hasMatch(lower);
+  }
+
+  String? _extractBestTitleFromReceipt(String text) {
+    final lines = text
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    for (final line in lines.take(6)) {
+      if (_looksLikeNonTitleLine(line)) continue;
+      if (line.length < 3) continue;
+
+      final letters = RegExp(r'[A-Za-z]').allMatches(line).length;
+      final digits = RegExp(r'\d').allMatches(line).length;
+
+      if (letters >= 3 && letters >= digits) {
+        return line.length > 40 ? line.substring(0, 40) : line;
+      }
+    }
+
+    return lines.isNotEmpty ? lines.first : null;
+  }
+
+  double? _tryParseReceiptAmount(String raw) {
+    var cleaned = raw.trim();
+    cleaned = cleaned.replaceAll(RegExp(r'[^0-9,.\-]'), '');
+
+    if (cleaned.contains(',') && cleaned.contains('.')) {
+      cleaned = cleaned.replaceAll(',', '');
+    } else if (cleaned.contains(',') && !cleaned.contains('.')) {
+      cleaned = cleaned.replaceAll(',', '.');
+    }
+
+    return double.tryParse(cleaned);
+  }
+
+  double? _extractBestAmountFromReceipt(String text) {
+    final normalized = _normalizeReceiptText(text);
+    final lines = normalized
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final totalLineRegex = RegExp(
+      r'(total|grand total|amount due|balance due|gesamt|summe)',
+      caseSensitive: false,
+    );
+
+    final amountRegex = RegExp(
+      r'(?<!\d)(\d{1,4}[.,]\d{2})(?!\d)',
+    );
+
+    for (final line in lines) {
+      if (totalLineRegex.hasMatch(line)) {
+        final matches = amountRegex.allMatches(line).toList();
+        if (matches.isNotEmpty) {
+          final last = matches.last.group(0);
+          final parsed = _tryParseReceiptAmount(last ?? '');
+          if (parsed != null && parsed > 0) {
+            return parsed;
+          }
+        }
+      }
+    }
+
+    final currencyLineRegex = RegExp(
+      r'(CHF|EUR|USD|CAD|\$)',
+      caseSensitive: false,
+    );
+
+    final currencyCandidates = <double>[];
+
+    for (final line in lines) {
+      if (currencyLineRegex.hasMatch(line)) {
+        final matches = amountRegex.allMatches(line);
+        for (final m in matches) {
+          final parsed = _tryParseReceiptAmount(m.group(0) ?? '');
+          if (parsed != null && parsed > 0) {
+            currencyCandidates.add(parsed);
+          }
+        }
+      }
+    }
+
+    if (currencyCandidates.isNotEmpty) {
+      return currencyCandidates.reduce((a, b) => a > b ? a : b);
+    }
+
+    final blockedLineRegex = RegExp(
+      r'(rech|invoice|table|tisch|tel|fax|mwst|vat|nr|no\.)',
+      caseSensitive: false,
+    );
+
+    final fallbackCandidates = <double>[];
+
+    for (final line in lines) {
+      if (blockedLineRegex.hasMatch(line)) continue;
+
+      final matches = amountRegex.allMatches(line);
+      for (final m in matches) {
+        final parsed = _tryParseReceiptAmount(m.group(0) ?? '');
+        if (parsed != null && parsed > 0) {
+          fallbackCandidates.add(parsed);
+        }
+      }
+    }
+
+    if (fallbackCandidates.isNotEmpty) {
+      return fallbackCandidates.reduce((a, b) => a > b ? a : b);
+    }
+
+    return null;
+  }
+
+  DateTime? _extractBestDateFromReceipt(String text) {
+    final normalized = _normalizeReceiptText(text);
+
+    final lines = normalized
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final dateLabelRegex = RegExp(
+      r'(date|date/time|invoice date|transaction date)',
+      caseSensitive: false,
+    );
+
+    for (final line in lines) {
+      if (dateLabelRegex.hasMatch(line)) {
+        final parsed = _parseDate(line);
+        if (parsed != null) return parsed;
+      }
+    }
+
+    final patterns = [
+      RegExp(r'\d{1,2}/\d{1,2}/\d{2,4}'),
+      RegExp(r'\d{2}\.\d{2}\.\d{2,4}'),
+      RegExp(r'\d{4}-\d{2}-\d{2}'),
+    ];
+
+    for (final line in lines) {
+      for (final pattern in patterns) {
+        final match = pattern.firstMatch(line);
+        if (match != null) {
+          final parsed = _parseDate(match.group(0)!);
+          if (parsed != null) return parsed;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  String? _extractBestLocationFromReceipt(String text) {
+    final lines = text
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final addressCandidates = <String>[];
+
+    for (final line in lines) {
+      final lower = line.toLowerCase();
+
+      final looksLikeZipCity =
+          RegExp(r'\b\d{5}(?:-\d{4})?\b').hasMatch(line) ||
+          RegExp(r'\b\d{4,6}\b').hasMatch(line);
+
+      final looksLikeStreet =
+          lower.contains('street') ||
+          lower.contains('st.') ||
+          lower.contains('st ') ||
+          lower.contains('road') ||
+          lower.contains('rd') ||
+          lower.contains('ave') ||
+          lower.contains('avenue') ||
+          lower.contains('blvd') ||
+          lower.contains('drive') ||
+          lower.contains('dr ') ||
+          lower.contains('lane') ||
+          lower.contains('ln ') ||
+          lower.contains('gurnee') ||
+          lower.contains('grindelwald') ||
+          lower.contains('finch avenue') ||
+          lower.contains('scarborough');
+
+      if (looksLikeStreet || looksLikeZipCity) {
+        addressCandidates.add(line);
+      }
+    }
+
+    if (addressCandidates.isEmpty) return null;
+    return addressCandidates.take(2).join(', ');
+  }
+
+  String _inferCategoryFromReceipt(String text) {
+    final lower = text.toLowerCase();
+
+    if (lower.contains('restaurant') ||
+        lower.contains('cafe') ||
+        lower.contains('latte') ||
+        lower.contains('macchiato') ||
+        lower.contains('pizza') ||
+        lower.contains('burger') ||
+        lower.contains('food') ||
+        lower.contains('bar') ||
+        lower.contains('hotel') ||
+        lower.contains('schnitzel') ||
+        lower.contains('supermarket') ||
+        lower.contains('grocery') ||
+        lower.contains('eggplant') ||
+        lower.contains('onion') ||
+        lower.contains('mango') ||
+        lower.contains('pumpkin')) {
+      return 'Food';
+    }
+
+    if (lower.contains('uber') ||
+        lower.contains('taxi') ||
+        lower.contains('transit') ||
+        lower.contains('bus') ||
+        lower.contains('train') ||
+        lower.contains('metro') ||
+        lower.contains('gas') ||
+        lower.contains('fuel') ||
+        lower.contains('parking') ||
+        lower.contains('post') ||
+        lower.contains('parcel') ||
+        lower.contains('mail')) {
+      return 'Transport';
+    }
+
+    if (lower.contains('walmart') ||
+        lower.contains('store') ||
+        lower.contains('market') ||
+        lower.contains('mall') ||
+        lower.contains('purchase') ||
+        lower.contains('shopping')) {
+      return 'Shopping';
+    }
+
+    if (lower.contains('netflix') ||
+        lower.contains('spotify') ||
+        lower.contains('cinema') ||
+        lower.contains('movie') ||
+        lower.contains('game')) {
+      return 'Entertainment';
+    }
+
+    if (lower.contains('pharmacy') ||
+        lower.contains('clinic') ||
+        lower.contains('hospital') ||
+        lower.contains('medical') ||
+        lower.contains('drug')) {
+      return 'Health';
+    }
+
+    if (lower.contains('hydro') ||
+        lower.contains('electric') ||
+        lower.contains('internet') ||
+        lower.contains('phone bill') ||
+        lower.contains('insurance')) {
+      return 'Bills';
+    }
+
+    return 'Other';
+  }
+
+  Future<void> _extractExpenseFieldsFromText(String text) async {
+    if (text.trim().isEmpty) return;
+
+    final normalizedText = _normalizeReceiptText(text);
+
+    if (_titleCtrl.text.trim().isEmpty) {
+      final bestTitle = _extractBestTitleFromReceipt(normalizedText);
+      if (bestTitle != null && bestTitle.trim().isNotEmpty) {
+        _titleCtrl.text = bestTitle;
+      }
+    }
+
+    if (_amountCtrl.text.trim().isEmpty) {
+      final bestAmount = _extractBestAmountFromReceipt(normalizedText);
+      if (bestAmount != null) {
+        _amountCtrl.text = bestAmount.toStringAsFixed(2);
+      }
+    }
+
+    DateTime? bestDate;
+
+    try {
+      final extractor = EntityExtractor(
+        language: EntityExtractorLanguage.english,
+      );
+
+      final annotations = await extractor.annotateText(normalizedText);
+
+      String? moneyEntityText;
+      String? addressEntityText;
+
+      for (final annotation in annotations) {
+        for (final entity in annotation.entities) {
+          switch (entity.type) {
+            case EntityType.money:
+              moneyEntityText ??= annotation.text;
+              break;
+            case EntityType.address:
+              addressEntityText ??= annotation.text;
+              break;
+            case EntityType.dateTime:
+              final parsed = _parseDate(annotation.text);
+              if (parsed != null) {
+                bestDate = parsed;
+              }
+              break;
+            default:
+              break;
+          }
+        }
+
+        if (bestDate != null) {
+          break;
+        }
+      }
+
+      if (_amountCtrl.text.trim().isEmpty && moneyEntityText != null) {
+        final parsed = _tryParseReceiptAmount(moneyEntityText);
+        if (parsed != null && parsed > 0) {
+          _amountCtrl.text = parsed.toStringAsFixed(2);
+        }
+      }
+
+      if (_locationCtrl.text.trim().isEmpty &&
+          addressEntityText != null &&
+          addressEntityText.trim().isNotEmpty) {
+        _locationCtrl.text = addressEntityText.trim();
+      }
+
+      await extractor.close();
+    } catch (_) {
+      // ignore extraction failures
+    }
+
+    bestDate ??= _extractBestDateFromReceipt(normalizedText);
+
+    if (bestDate != null) {
+      _date = bestDate;
+    }
+
+    if (_descCtrl.text.trim().isEmpty && normalizedText.trim().isNotEmpty) {
+      _descCtrl.text = normalizedText.trim();
+      _showDescription = true;
+    }
+
+    if (_locationCtrl.text.trim().isEmpty) {
+      final bestLocation = _extractBestLocationFromReceipt(normalizedText);
+      if (bestLocation != null && bestLocation.trim().isNotEmpty) {
+        _locationCtrl.text = bestLocation;
+      }
+    }
+
+    if (_selectedCategory == "Food" || _selectedCategory == "Other") {
+      _selectedCategory = _inferCategoryFromReceipt(normalizedText);
+    }
+
+    if (_locationCtrl.text.trim().isNotEmpty) {
+      final suggestions = await _fetchLocationSuggestions(_locationCtrl.text);
+      if (suggestions.isNotEmpty && mounted) {
+        await _selectLocation(suggestions.first);
+      }
+    }
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<List<_LocationSuggestion>> _fetchLocationSuggestions(
@@ -445,7 +969,6 @@ class _AddExpensePageState extends State<AddExpensePage>
 
     try {
       final results = await locationFromAddress(query);
-
       final suggestions = <_LocationSuggestion>[];
 
       for (final loc in results.take(5)) {
@@ -471,7 +994,7 @@ class _AddExpensePageState extends State<AddExpensePage>
             }
           }
         } catch (_) {
-          // keep fallback lat/lng label
+          // keep fallback label
         }
 
         suggestions.add(
@@ -503,7 +1026,9 @@ class _AddExpensePageState extends State<AddExpensePage>
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _mapController.move(point, 15);
+      try {
+        _mapController.move(point, 15);
+      } catch (_) {}
     });
   }
 
@@ -523,12 +1048,6 @@ class _AddExpensePageState extends State<AddExpensePage>
     }
   }
 
-  /// Saves the expense to the database.
-  /// Action depends on mode:
-  /// - Edit mode ([_isEditing]): calls [updateExpense] to modify existing entry
-  /// - Add/Duplicate mode: calls [insertExpense] to create new entry (ID will be null)
-  /// Validates amount > 0 before saving.
-  /// Returns true to parent via Navigator.pop() to trigger list refresh.
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -635,6 +1154,23 @@ class _AddExpensePageState extends State<AddExpensePage>
                           return null;
                         },
                       ),
+                      if (_isScanningReceipt) ...[
+                        const SizedBox(height: 12),
+                        const Row(
+                          children: [
+                            SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              "Scanning receipt...",
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       TypeAheadField<_LocationSuggestion>(
                         suggestionsCallback: (pattern) async {
@@ -765,6 +1301,39 @@ class _AddExpensePageState extends State<AddExpensePage>
                                   ],
                                 ),
                               ],
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (_scannedRawText != null &&
+                          _scannedRawText!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            "Scanned Text Preview",
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color:
+                                scheme.surfaceContainerHighest.withOpacity(0.45),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _scannedRawText!,
+                            maxLines: 8,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -915,7 +1484,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
+                              color: Colors.black.withOpacity(0.08),
                               blurRadius: 8,
                             ),
                           ],
@@ -947,7 +1516,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
+                              color: Colors.black.withOpacity(0.08),
                               blurRadius: 8,
                             ),
                           ],
