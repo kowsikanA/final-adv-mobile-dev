@@ -42,6 +42,8 @@ class _AddExpensePageState extends State<AddExpensePage>
   final ImagePicker _imagePicker = ImagePicker();
 
   DateTime? _date = DateTime.now();
+  DateTime? _dueDate;
+  bool _isPaid = false;
 
   final List<String> _categories = const [
     "Food",
@@ -98,6 +100,7 @@ class _AddExpensePageState extends State<AddExpensePage>
       _descCtrl.text = initial.description ?? '';
       _locationCtrl.text = initial.location ?? '';
       _date = initial.date ?? DateTime.now();
+      _dueDate = initial.dueDate;
       _selectedCategory = _categories.contains(initial.category)
           ? initial.category
           : 'Other';
@@ -105,6 +108,7 @@ class _AddExpensePageState extends State<AddExpensePage>
           ? initial.paymentMethod
           : 'Cash';
       _showDescription = _descCtrl.text.trim().isNotEmpty;
+      _isPaid = widget.duplicateMode ? false : initial.isPaid;
 
       if ((initial.location ?? '').trim().isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -357,9 +361,11 @@ class _AddExpensePageState extends State<AddExpensePage>
             category: _normalizeCategory(categoryText) ??
                 _inferCategoryFromReceipt(combinedText),
             date: parsedDate ?? DateTime.now(),
+            dueDate: null,
             description: description,
             paymentMethod: _normalizePaymentMethod(paymentText) ?? "Cash",
             location: locationText,
+            isPaid: false,
           ),
         );
       }
@@ -1160,6 +1166,24 @@ String _buildReadableReceiptText(RecognizedText text) {
     }
   }
 
+
+  Future<void> _pickDueDate() async {
+    HapticFeedback.selectionClick();
+    final now = DateTime.now();
+    final initialDate = _dueDate ?? _date ?? now;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 10),
+    );
+
+    if (picked != null) {
+      HapticFeedback.lightImpact();
+      setState(() => _dueDate = picked);
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -1178,10 +1202,12 @@ String _buildReadableReceiptText(RecognizedText text) {
       amount: amount,
       category: _selectedCategory,
       date: _date,
+      dueDate: _dueDate,
       description: _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
       paymentMethod: _selectedPayment,
       location:
           _locationCtrl.text.trim().isEmpty ? null : _locationCtrl.text.trim(),
+      isPaid: _isPaid,
     );
 
     if (_isEditing) {
@@ -1517,6 +1543,51 @@ String _buildReadableReceiptText(RecognizedText text) {
                             style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _pickDueDate,
+                          icon: const Icon(Icons.event_available_outlined),
+                          label: Text(
+                            _dueDate == null
+                                ? "Pick due date (optional)"
+                                : "Due Date: ${_dueDate!.toLocal().toString().split(' ').first}",
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                      if (_dueDate != null) ...[
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () {
+                              HapticFeedback.selectionClick();
+                              setState(() => _dueDate = null);
+                            },
+                            icon: const Icon(Icons.close),
+                            label: const Text("Clear due date"),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _isPaid,
+                        onChanged: (value) {
+                          HapticFeedback.selectionClick();
+                          setState(() => _isPaid = value ?? false);
+                        },
+                        title: const Text(
+                          "Mark as already paid",
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: const Text(
+                          "Turn this on if you already settled this expense.",
+                        ),
+                        controlAffinity: ListTileControlAffinity.leading,
                       ),
                       const SizedBox(height: 10),
                       Row(

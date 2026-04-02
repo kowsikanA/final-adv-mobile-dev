@@ -235,6 +235,52 @@ class _ExpensePageState extends State<ExpensePage> {
     }
   }
 
+
+  String _formatDueDate(DateTime? date) {
+    if (date == null) return 'No due date';
+    return DateFormat('yyyy-MM-dd').format(date);
+  }
+
+  bool _isOverdue(Expense expense) {
+    if (expense.dueDate == null || expense.isPaid) return false;
+    final due = DateTime(
+      expense.dueDate!.year,
+      expense.dueDate!.month,
+      expense.dueDate!.day,
+    );
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return due.isBefore(today);
+  }
+
+  Widget _buildStatusChip(Expense expense, ColorScheme scheme) {
+    final label = expense.isPaid
+        ? 'Paid'
+        : _isOverdue(expense)
+            ? 'Overdue'
+            : 'Unpaid';
+    final color = expense.isPaid
+        ? Colors.green
+        : _isOverdue(expense)
+            ? scheme.error
+            : scheme.primary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
+    );
+  }
+
   Future<void> _addExpense() async {
     HapticFeedback.selectionClick();
     await Navigator.of(context).push(
@@ -303,9 +349,11 @@ class _ExpensePageState extends State<ExpensePage> {
           amount: expense.amount,
           category: expense.category,
           date: expense.date,
+          dueDate: expense.dueDate,
           description: expense.description,
           paymentMethod: expense.paymentMethod,
           location: expense.location,
+          isPaid: expense.isPaid,
         ),
       );
       await _loadExpenses();
@@ -1202,6 +1250,32 @@ class _ExpensePageState extends State<ExpensePage> {
                                                 ),
                                               ),
                                             ),
+                                            _buildStatusChip(expense, scheme),
+                                            if (expense.dueDate != null)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 10,
+                                                  vertical: 6,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: _isOverdue(expense)
+                                                      ? scheme.errorContainer
+                                                      : scheme.surfaceContainerHighest
+                                                          .withValues(alpha: 0.7),
+                                                  borderRadius:
+                                                      BorderRadius.circular(999),
+                                                ),
+                                                child: Text(
+                                                  'Due ${_formatDueDate(expense.dueDate)}',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w800,
+                                                    color: _isOverdue(expense)
+                                                        ? scheme.onErrorContainer
+                                                        : scheme.onSurface,
+                                                  ),
+                                                ),
+                                              ),
                                           ],
                                         ),
                                         if (expense.location != null &&
@@ -1238,12 +1312,26 @@ class _ExpensePageState extends State<ExpensePage> {
                                       ],
                                     ),
                                   ),
-                                  trailing: Text(
-                                    _money(expense.amount),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                      color: scheme.onSurface,
-                                    ),
+                                  trailing: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        _money(expense.amount),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                          color: scheme.onSurface,
+                                        ),
+                                      ),
+                                      if (expense.isPaid) ...[
+                                        const SizedBox(height: 4),
+                                        const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.green,
+                                          size: 18,
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
                               ),

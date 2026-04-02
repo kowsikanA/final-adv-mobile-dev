@@ -139,13 +139,16 @@ class ExpenseDatabase {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (db, _) async {
         await _ensureAuxTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _ensureAuxTables(db);
+        }
+        if (FirebaseAuth.instance.currentUser != null) {
+          await _ensureTable(db);
         }
       },
     );
@@ -199,11 +202,26 @@ class ExpenseDatabase {
         amount REAL NOT NULL,
         category TEXT NOT NULL,
         date TEXT NOT NULL,
+        dueDate TEXT,
         description TEXT,
         paymentMethod TEXT NOT NULL,
-        location TEXT
+        location TEXT,
+        isPaid INTEGER NOT NULL DEFAULT 0
       )
     ''');
+
+    final columns = await db.rawQuery('PRAGMA table_info($_tableName)');
+    final columnNames = columns.map((e) => e['name'] as String).toSet();
+
+    if (!columnNames.contains('dueDate')) {
+      await db.execute('ALTER TABLE $_tableName ADD COLUMN dueDate TEXT');
+    }
+
+    if (!columnNames.contains('isPaid')) {
+      await db.execute(
+        'ALTER TABLE $_tableName ADD COLUMN isPaid INTEGER NOT NULL DEFAULT 0',
+      );
+    }
   }
 
   // ================= CRUD =================
@@ -420,9 +438,11 @@ class ExpenseDatabase {
               amount: recurring.amount,
               category: recurring.category,
               date: dueDate,
+              dueDate: dueDate,
               description: recurring.description,
               paymentMethod: recurring.paymentMethod,
               location: recurring.location,
+              isPaid: false,
             ).toMap(),
           );
           localCreated++;

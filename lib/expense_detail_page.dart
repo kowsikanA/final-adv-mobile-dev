@@ -4,7 +4,9 @@ import 'package:geocoding/geocoding.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'add_expense.dart';
+import 'database/expense_database.dart';
 import 'models/expense.dart';
+import 'stripe_service.dart';
 
 class ExpenseDetailPage extends StatefulWidget {
   final Expense expense;
@@ -24,6 +26,7 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
   LatLng? _locationPoint;
   bool _isLoadingLocation = false;
   String? _locationError;
+  bool _isPaying = false;
 
   @override
   void initState() {
@@ -80,12 +83,103 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
     return date.toLocal().toString().split(' ').first;
   }
 
-  /// Navigates to the expense editor form.
-  /// [duplicate] controls whether this is an edit or duplicate operation:
-  /// - If false: edits the existing expense in-place (updateExpense)
-  /// - If true: creates a copy of the expense as a new entry (insertExpense, no ID)
-  /// Awaits the editor's return value (true if changes were made).
-  /// If changes were made, pops this detail page to refresh the parent list.
+  String _formatDueDate(DateTime? date) {
+    if (date == null) return "No due date";
+    return date.toLocal().toString().split(' ').first;
+  }
+
+  bool get _isOverdue {
+    final dueDate = widget.expense.dueDate;
+    if (dueDate == null || widget.expense.isPaid) return false;
+    final today = DateTime.now();
+    final due = DateTime(dueDate.year, dueDate.month, dueDate.day);
+    final now = DateTime(today.year, today.month, today.day);
+    return due.isBefore(now);
+  }
+
+  Future<void> _markAsPaid() async {
+    if (widget.expense.id == null) return;
+
+    await ExpenseDatabase.instance.updateExpense(
+      widget.expense.copyWith(isPaid: true),
+    );
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Expense marked as paid')),
+    );
+    Navigator.of(context).pop(true);
+  }
+
+  Future<void> _payWithStripe() async {
+    if (_isPaying || widget.expense.isPaid) return;
+
+    setState(() {
+      _isPaying = true;
+    });
+
+    try {
+      await StripeService.pay(
+        amount: widget.expense.amount,
+        title: widget.expense.title,
+      );
+
+      if (!mounted) return;
+
+      await ExpenseDatabase.instance.updateExpense(
+        widget.expense.copyWith(isPaid: true),
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Stripe payment successful')),
+      );
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Payment failed: $e')),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isPaying = false;
+      });
+    }
+  }
+
+  Widget _buildStatusChip(ColorScheme scheme) {
+    final isPaid = widget.expense.isPaid;
+    final label = isPaid
+        ? 'Paid'
+        : _isOverdue
+            ? 'Overdue'
+            : 'Unpaid';
+    final color = isPaid
+        ? Colors.green
+        : _isOverdue
+            ? scheme.error
+            : scheme.primary;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
   Future<void> _openEditor({required bool duplicate}) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -167,9 +261,6 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
             pinned: true,
             backgroundColor: scheme.primary,
             foregroundColor: scheme.onPrimary,
-            // Action buttons for editing and duplicating expenses
-            // Duplicate: Creates a copy of this expense as a new entry
-            // Edit: Modifies the current expense in-place
             actions: [
               IconButton(
                 tooltip: 'Duplicate expense',
@@ -227,7 +318,6 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
               ),
             ),
           ),
-
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(20),
@@ -248,6 +338,12 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
                     value: _money(expense.amount),
                     color: scheme.primary,
                   ),
+                  Row(
+                    children: [
+                      _buildStatusChip(scheme),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   _buildInfoRow(
                     context: context,
                     icon: Icons.category_outlined,
@@ -264,6 +360,13 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
                   ),
                   _buildInfoRow(
                     context: context,
+                    icon: Icons.event_available_outlined,
+                    label: "Due Date",
+                    value: _formatDueDate(expense.dueDate),
+                    color: _isOverdue ? scheme.error : scheme.primary,
+                  ),
+                  _buildInfoRow(
+                    context: context,
                     icon: Icons.credit_card_outlined,
                     label: "Payment Method",
                     value: expense.paymentMethod,
@@ -273,7 +376,8 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
                     context: context,
                     icon: Icons.notes_outlined,
                     label: "Description",
-                    value: (expense.description == null || expense.description!.trim().isEmpty)
+                    value: (expense.description == null ||
+                            expense.description!.trim().isEmpty)
                         ? "No description"
                         : expense.description!,
                     color: scheme.primary,
@@ -282,17 +386,46 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
                     context: context,
                     icon: Icons.location_on_outlined,
                     label: "Location",
-                    value: (expense.location == null || expense.location!.trim().isEmpty)
+                    value: (expense.location == null ||
+                            expense.location!.trim().isEmpty)
                         ? "No location"
                         : expense.location!,
                     color: scheme.primary,
                   ),
-
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: expense.isPaid ? null : _markAsPaid,
+                      icon: Icon(
+                        expense.isPaid
+                            ? Icons.check_circle
+                            : Icons.payment_outlined,
+                      ),
+                      label: Text(
+                        expense.isPaid ? "Already Paid" : "Mark as Paid",
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: expense.isPaid || _isPaying ? null : _payWithStripe,
+                      icon: _isPaying
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.credit_card_outlined),
+                      label: Text(_isPaying ? "Processing..." : "Pay with Stripe"),
+                    ),
+                  ),
                   if (_isLoadingLocation) ...[
                     const SizedBox(height: 12),
                     const Center(child: CircularProgressIndicator()),
                   ],
-
                   if (_locationError != null) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -303,7 +436,6 @@ class _ExpenseDetailPageState extends State<ExpenseDetailPage> {
                       ),
                     ),
                   ],
-
                   if (_locationPoint != null) ...[
                     const SizedBox(height: 14),
                     ClipRRect(
