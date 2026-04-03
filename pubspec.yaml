@@ -54,6 +54,7 @@ dependencies:
   google_mlkit_entity_extraction: ^0.15.3
   flutter_stripe: ^12.4.0
   http: ^1.6.0
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
