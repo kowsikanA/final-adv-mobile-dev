@@ -147,84 +147,85 @@ class _AddExpensePageState extends State<AddExpensePage>
       _fabController.reverse();
     }
   }
+
   Future<void> _recoverLostCameraImage() async {
-  try {
-    final LostDataResponse response = await _imagePicker.retrieveLostData();
-
-    if (response.isEmpty) return;
-
-    if (response.files != null && response.files!.isNotEmpty) {
-      await _processPickedReceiptFile(response.files!.first);
-      return;
-    }
-
-    if (response.file != null) {
-      await _processPickedReceiptFile(response.file!);
-      return;
-    }
-  } catch (e) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Failed to recover camera image: $e")),
-    );
-  }
-}
-
-Future<void> _processPickedReceiptFile(XFile pickedFile) async {
-  TextRecognizer? textRecognizer;
-
-  try {
-    if (!mounted) return;
-    setState(() {
-      _isScanningReceipt = true;
-      _scannedRawText = null;
-    });
-
-    final inputImage = InputImage.fromFilePath(pickedFile.path);
-
-    textRecognizer = TextRecognizer(
-      script: TextRecognitionScript.latin,
-    );
-
-    final recognizedText = await textRecognizer.processImage(inputImage);
-    final rebuiltText = _buildReadableReceiptText(recognizedText);
-
-    if (!mounted) return;
-    setState(() {
-      _scannedRawText = rebuiltText;
-    });
-
-    await _extractExpenseFieldsFromRecognizedText(recognizedText);
-
-    if (!mounted) return;
-    HapticFeedback.mediumImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          rebuiltText.isEmpty
-              ? "Scan finished, but no text was detected"
-              : "Receipt scanned successfully",
-        ),
-      ),
-    );
-  } catch (e) {
-    if (!mounted) return;
-    HapticFeedback.heavyImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Scan failed: $e")),
-    );
-  } finally {
     try {
-      await textRecognizer?.close();
-    } catch (_) {}
+      final LostDataResponse response = await _imagePicker.retrieveLostData();
 
-    if (mounted) {
-      setState(() {
-        _isScanningReceipt = false;
-      });
+      if (response.isEmpty) return;
+
+      if (response.files != null && response.files!.isNotEmpty) {
+        await _processPickedReceiptFile(response.files!.first);
+        return;
+      }
+
+      if (response.file != null) {
+        await _processPickedReceiptFile(response.file!);
+        return;
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to recover camera image: $e")),
+      );
     }
   }
-}
+
+  Future<void> _processPickedReceiptFile(XFile pickedFile) async {
+    TextRecognizer? textRecognizer;
+
+    try {
+      if (!mounted) return;
+      setState(() {
+        _isScanningReceipt = true;
+        _scannedRawText = null;
+      });
+
+      final inputImage = InputImage.fromFilePath(pickedFile.path);
+
+      textRecognizer = TextRecognizer(
+        script: TextRecognitionScript.latin,
+      );
+
+      final recognizedText = await textRecognizer.processImage(inputImage);
+      final rebuiltText = _buildReadableReceiptText(recognizedText);
+
+      if (!mounted) return;
+      setState(() {
+        _scannedRawText = rebuiltText;
+      });
+
+      await _extractExpenseFieldsFromRecognizedText(recognizedText);
+
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            rebuiltText.isEmpty
+                ? "Scan finished, but no text was detected"
+                : "Receipt scanned successfully",
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      HapticFeedback.heavyImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Scan failed: $e")),
+      );
+    } finally {
+      try {
+        await textRecognizer?.close();
+      } catch (_) {}
+
+      if (mounted) {
+        setState(() {
+          _isScanningReceipt = false;
+        });
+      }
+    }
+  }
 
   Future<void> _onCameraTap() async {
     if (_isScanningReceipt) return;
@@ -241,7 +242,7 @@ Future<void> _processPickedReceiptFile(XFile pickedFile) async {
     try {
       final XFile? pickedFile = await _imagePicker.pickImage(
         source: ImageSource.camera,
-        imageQuality: 60,
+        imageQuality: 95,
         maxWidth: 1280,
         maxHeight: 1280,
         preferredCameraDevice: CameraDevice.rear,
@@ -649,7 +650,6 @@ Future<void> _processPickedReceiptFile(XFile pickedFile) async {
 
       final double topDiff = (topA - topB).abs();
 
-      // Treat nearby rows as same row, then sort by left
       if (topDiff <= 14) {
         return leftA.compareTo(leftB);
       }
@@ -953,6 +953,104 @@ Future<void> _processPickedReceiptFile(XFile pickedFile) async {
     return null;
   }
 
+  DateTime? _extractDueDateFromReceipt(String text) {
+    final lines = text
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final dueKeywords = [
+      'due date',
+      'payment due',
+      'due by',
+      'pay by',
+      'pay before',
+      'amount due',
+      'balance due',
+      'due on',
+    ];
+
+    for (final line in lines) {
+      final lower = line.toLowerCase();
+
+      for (final keyword in dueKeywords) {
+        if (lower.contains(keyword)) {
+          final parsed = _parseDate(line);
+          if (parsed != null) return parsed;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  bool _detectIfPaid(String text) {
+    final lower = text.toLowerCase();
+
+    final unpaidKeywords = [
+      'amount due',
+      'balance due',
+      'payment due',
+      'due date',
+      'due by',
+      'pay by',
+      'pending',
+      'invoice',
+      'statement',
+    ];
+
+    final paidKeywords = [
+      'approved',
+      'paid',
+      'paid in full',
+      'payment received',
+      'completed',
+      'thank you for your purchase',
+      'visa',
+      'mastercard',
+      'debit',
+      'credit',
+      'cash',
+      'transaction id',
+      'auth code',
+      'authorization',
+      'change',
+      'tender',
+    ];
+
+    for (final keyword in unpaidKeywords) {
+      if (lower.contains(keyword)) return false;
+    }
+
+    for (final keyword in paidKeywords) {
+      if (lower.contains(keyword)) return true;
+    }
+
+    return false;
+  }
+
+  String? _detectPaymentMethodFromReceipt(String text) {
+    final lower = text.toLowerCase();
+
+    if (lower.contains('debit')) return 'Debit';
+    if (lower.contains('credit') ||
+        lower.contains('visa') ||
+        lower.contains('mastercard') ||
+        lower.contains('amex')) {
+      return 'Credit';
+    }
+    if (lower.contains('cash')) return 'Cash';
+    if (lower.contains('online') ||
+        lower.contains('paypal') ||
+        lower.contains('e-transfer') ||
+        lower.contains('etransfer')) {
+      return 'Online';
+    }
+
+    return null;
+  }
+
   String? _extractBestLocationFromReceipt(String text) {
     final lines = text
         .split('\n')
@@ -1092,6 +1190,19 @@ Future<void> _processPickedReceiptFile(XFile pickedFile) async {
     final bestDate = _extractBestDateFromReceipt(normalizedText);
     if (bestDate != null) {
       _date = bestDate;
+    }
+
+    final detectedDueDate = _extractDueDateFromReceipt(normalizedText);
+    if (detectedDueDate != null) {
+      _dueDate = detectedDueDate;
+      _isPaid = false;
+    } else {
+      _isPaid = _detectIfPaid(normalizedText);
+    }
+
+    final detectedPaymentMethod = _detectPaymentMethodFromReceipt(normalizedText);
+    if (detectedPaymentMethod != null) {
+      _selectedPayment = detectedPaymentMethod;
     }
 
     _descCtrl.text = normalizedText;
