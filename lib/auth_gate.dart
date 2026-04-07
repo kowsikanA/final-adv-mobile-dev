@@ -27,21 +27,6 @@ class AuthGate extends StatelessWidget {
 
         return AnimatedSwitcher(
           duration: const Duration(milliseconds: 320),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            final fade = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOut,
-            );
-            return FadeTransition(
-              opacity: fade,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.98, end: 1.0).animate(fade),
-                child: child,
-              ),
-            );
-          },
           child: child,
         );
       },
