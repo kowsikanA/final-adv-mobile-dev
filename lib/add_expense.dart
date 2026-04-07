@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:csv/csv.dart';
-import 'package:excel/excel.dart';
+import 'package:excel/excel.dart' hide Border;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -44,6 +44,8 @@ class _AddExpensePageState extends State<AddExpensePage>
   DateTime? _date = DateTime.now();
   DateTime? _dueDate;
   bool _isPaid = false;
+  bool _isRecurring = false;
+  RecurringFrequency? _selectedFrequency;
 
   final List<String> _categories = const [
     "Food",
@@ -1337,6 +1339,69 @@ class _AddExpensePageState extends State<AddExpensePage>
     }
   }
 
+  /// Get human-readable label for recurring frequency
+  String _getFrequencyLabel(RecurringFrequency freq) {
+    switch (freq) {
+      case RecurringFrequency.daily:
+        return "every day";
+      case RecurringFrequency.biDaily:
+        return "every other day";
+      case RecurringFrequency.monthly:
+        return "monthly";
+      case RecurringFrequency.yearly:
+        return "yearly";
+      default:
+        return "as scheduled";
+    }
+  }
+
+  /// Show modal to select recurring frequency
+  Future<void> _showRecurringFrequencyPicker() async {
+    final frequency = await showModalBottomSheet<RecurringFrequency>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "How often should this repeat?",
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 16),
+                ListTile(
+                  title: const Text("Every Day"),
+                  onTap: () => Navigator.pop(context, RecurringFrequency.daily),
+                ),
+                ListTile(
+                  title: const Text("Every Other Day"),
+                  onTap: () => Navigator.pop(context, RecurringFrequency.biDaily),
+                ),
+                ListTile(
+                  title: const Text("Once a Month"),
+                  onTap: () => Navigator.pop(context, RecurringFrequency.monthly),
+                ),
+                ListTile(
+                  title: const Text("Once a Year"),
+                  onTap: () => Navigator.pop(context, RecurringFrequency.yearly),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (frequency != null) {
+      setState(() {
+        _selectedFrequency = frequency;
+      });
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -1368,6 +1433,28 @@ class _AddExpensePageState extends State<AddExpensePage>
       await ExpenseDatabase.instance.updateExpense(expense);
     } else {
       await ExpenseDatabase.instance.insertExpense(expense);
+
+      /// If recurring, create a recurring expense template
+      if (_isRecurring && _selectedFrequency != null) {
+        final recurringExpense = RecurringExpense(
+          title: _titleCtrl.text.trim(),
+          amount: amount,
+          category: _selectedCategory,
+          paymentMethod: _selectedPayment,
+          description: _descCtrl.text.trim().isEmpty
+              ? null
+              : _descCtrl.text.trim(),
+          location: _locationCtrl.text.trim().isEmpty
+              ? null
+              : _locationCtrl.text.trim(),
+          startDate: _date ?? DateTime.now(),
+          frequency: _selectedFrequency!,
+          nextDueDate: _date ?? DateTime.now(),
+        );
+
+        await ExpenseDatabase.instance
+            .insertRecurringExpense(recurringExpense);
+      }
     }
 
     HapticFeedback.mediumImpact();
@@ -1688,6 +1775,73 @@ class _AddExpensePageState extends State<AddExpensePage>
                             },
                           );
                         }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      /// Recurring Expense Toggle
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: scheme.primary.withValues(alpha: 0.3),
+                            width: 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          color: _isRecurring
+                              ? scheme.primary.withValues(alpha: 0.1)
+                              : Colors.transparent,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "Recurring Payment",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      color: scheme.onSurface,
+                                    ),
+                                  ),
+                                  if (_isRecurring && _selectedFrequency != null)
+                                    Text(
+                                      "Repeats ${_getFrequencyLabel(_selectedFrequency!)}",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            if (!_isRecurring)
+                              OutlinedButton(
+                                onPressed: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _isRecurring = true);
+                                  _showRecurringFrequencyPicker();
+                                },
+                                child: const Text("Enable"),
+                              )
+                            else
+                              OutlinedButton(
+                                onPressed: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() {
+                                    _isRecurring = false;
+                                    _selectedFrequency = null;
+                                  });
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: scheme.error,
+                                  side: BorderSide(color: scheme.error),
+                                ),
+                                child: const Text("Disable"),
+                              ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 16),
                       SizedBox(

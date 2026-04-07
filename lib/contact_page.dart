@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class ContactPage extends StatelessWidget {
-  const ContactPage({super.key});
+  final VoidCallback? onOpenDrawer;
+
+  const ContactPage({super.key, this.onOpenDrawer});
 
   @override
   Widget build(BuildContext context) {
@@ -31,9 +33,24 @@ class ContactPage extends StatelessWidget {
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(14),
-      children: [
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: scheme.surface,
+        foregroundColor: scheme.onSurface,
+        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          tooltip: 'Menu',
+          onPressed: () {
+            Navigator.of(context).pop();
+            onOpenDrawer?.call();
+          },
+        ),
+        title: const Text('Contact'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(14),
+        children: [
         Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
@@ -96,6 +113,7 @@ class ContactPage extends StatelessWidget {
           value: "120 Simcoe Street, Toronto, ON, Canada",
         ),
       ],
+      ),
     );
   }
 }

@@ -7,7 +7,7 @@ import '../models/expense.dart';
 /// Enum representing how often a recurring expense should repeat.
 /// - [weekly]: Repeats every 7 days
 /// - [monthly]: Repeats every month on the same day
-enum RecurringFrequency { weekly, monthly }
+enum RecurringFrequency { daily, biDaily, weekly, monthly, yearly }
 
 /// Model for recurring/repeating expenses.
 /// Stores a template that will auto-generate individual Expense instances

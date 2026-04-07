@@ -20,7 +20,8 @@ Future<void> main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  static const _seed = Color(0xFF16A34A);
+  /// Deep wealth-inspired green: premium, growth, trust
+  static const _seed = Color(0xFF1B5E20);
 
   @override
   Widget build(BuildContext context) {
