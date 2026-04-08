@@ -1818,14 +1818,12 @@ class _ExpensePageState extends State<ExpensePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   late final AiChatPage _aiChatPage;
-  late final ContactPage _contactPage;
   late final FinancialNewsPage _financialNewsPage;
 
   @override
   void initState() {
     super.initState();
     _aiChatPage = const AiChatPage();
-    _contactPage = const ContactPage();
     _financialNewsPage = const FinancialNewsPage();
 
     _searchController.addListener(() {
@@ -2694,6 +2692,75 @@ class _ExpensePageState extends State<ExpensePage> {
     return exportDirectory;
   }
 
+  Future<void> _showCsvPreview(String path, String fileName) async {
+    final rawCsv = await File(path).readAsString();
+    final rows = const CsvToListConverter().convert(rawCsv);
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) {
+          final headers = rows.isNotEmpty
+              ? rows.first.map((h) => h.toString()).toList()
+              : <String>[];
+          final dataRows = rows.length > 1 ? rows.sublist(1) : <List<dynamic>>[];
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(fileName, overflow: TextOverflow.ellipsis),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.share_outlined),
+                  tooltip: 'Share',
+                  onPressed: () async {
+                    await SharePlus.instance.share(
+                      ShareParams(files: [XFile(path)], subject: fileName),
+                    );
+                  },
+                ),
+              ],
+            ),
+            body: dataRows.isEmpty
+                ? const Center(child: Text('No data rows found.'))
+                : SingleChildScrollView(
+                    scrollDirection: Axis.vertical,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.all(12),
+                      child: DataTable(
+                        headingRowColor: WidgetStateProperty.all(
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
+                        ),
+                        columns: headers
+                            .map((h) => DataColumn(
+                                  label: Text(
+                                    h,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                ))
+                            .toList(),
+                        rows: dataRows
+                            .map(
+                              (row) => DataRow(
+                                cells: List.generate(
+                                  headers.length,
+                                  (i) => DataCell(
+                                    Text(i < row.length
+                                        ? row[i].toString()
+                                        : ''),
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    ),
+                  ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _showExportResultSheet({
     required String label,
     required String path,
@@ -2705,6 +2772,7 @@ class _ExpensePageState extends State<ExpensePage> {
     final fileName = file.uri.pathSegments.isNotEmpty
         ? file.uri.pathSegments.last
         : path;
+    final isCsv = path.toLowerCase().endsWith('.csv');
 
     await showModalBottomSheet<void>(
       context: context,
@@ -2740,7 +2808,11 @@ class _ExpensePageState extends State<ExpensePage> {
                   subtitle: const Text('Preview the exported report now'),
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
-                    await _openExportTarget(path, 'Could not open the file.');
+                    if (isCsv) {
+                      await _showCsvPreview(path, fileName);
+                    } else {
+                      await _openExportTarget(path, 'Could not open the file.');
+                    }
                   },
                 ),
                 ListTile(
@@ -2750,10 +2822,12 @@ class _ExpensePageState extends State<ExpensePage> {
                   subtitle: const Text('Send the report to another app'),
                   onTap: () async {
                     Navigator.of(sheetContext).pop();
-                    await Share.shareXFiles(
-                      [XFile(path)],
-                      subject: '$label from Wealtha',
-                      text: 'Sharing $fileName from Wealtha.',
+                    await SharePlus.instance.share(
+                      ShareParams(
+                        files: [XFile(path)],
+                        subject: '$label from Wealtha',
+                        text: 'Sharing $fileName from Wealtha.',
+                      ),
                     );
                   },
                 ),
@@ -2783,6 +2857,16 @@ class _ExpensePageState extends State<ExpensePage> {
       final result = await OpenFile.open(targetPath);
       if (!mounted) return;
       if (result.type == ResultType.done) {
+        return;
+      }
+
+      // If opening the file directly failed and it's a file (not a directory),
+      // fall back to the system share sheet so the user can still access it.
+      final isFile = await File(targetPath).exists();
+      if (isFile) {
+        await SharePlus.instance.share(
+          ShareParams(files: [XFile(targetPath)], text: 'Exported from Wealtha'),
+        );
         return;
       }
 

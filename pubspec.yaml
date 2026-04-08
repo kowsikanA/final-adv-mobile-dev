@@ -52,6 +52,7 @@ dependencies:
   printing: ^5.14.2
   share_plus: ^11.1.0
   image_picker: ^1.1.2
+  syncfusion_flutter_pdf: ^29.1.39
   # google_mlkit_document_scanner: ^0.4.1
   google_mlkit_text_recognition: ^0.15.0
   google_mlkit_entity_extraction: ^0.15.3

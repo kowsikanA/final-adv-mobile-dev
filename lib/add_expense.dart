@@ -4022,6 +4022,7 @@
 //   }
 // }
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:csv/csv.dart';
@@ -4034,6 +4035,9 @@ import 'package:geocoding/geocoding.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:printing/printing.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart' as sfpdf;
 
 import 'database/expense_database.dart';
 import 'models/expense.dart';
@@ -4519,25 +4523,32 @@ class _AddExpensePageState extends State<AddExpensePage>
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['csv', 'xlsx', 'xls'],
+        allowedExtensions: ['csv', 'xlsx', 'xls', 'pdf'],
         allowMultiple: false,
+        withData: true,
       );
 
       if (result == null || result.files.isEmpty) return;
 
       final picked = result.files.single;
       final path = picked.path;
-      if (path == null) {
-        throw Exception('Unable to read selected file path.');
+      final bytesFromPicker = picked.bytes;
+      final extension = ((picked.extension ??
+                  (picked.name.contains('.')
+                      ? picked.name.split('.').last
+                      : '')))
+          .toLowerCase();
+
+      if (path == null && bytesFromPicker == null) {
+        throw Exception('Unable to read selected file. Please choose a local file.');
       }
 
-      final extension = (picked.extension ?? '').toLowerCase();
-      final file = File(path);
+      final fileBytes = bytesFromPicker ?? await File(path!).readAsBytes();
 
       List<Map<String, dynamic>> rows = [];
 
       if (extension == 'csv') {
-        final input = await file.readAsString();
+        final input = utf8.decode(fileBytes, allowMalformed: true);
         final csvTable = const CsvToListConverter().convert(input);
 
         if (csvTable.isEmpty) {
@@ -4561,8 +4572,7 @@ class _AddExpensePageState extends State<AddExpensePage>
           rows.add(data);
         }
       } else if (extension == 'xlsx' || extension == 'xls') {
-        final bytes = await file.readAsBytes();
-        final excel = Excel.decodeBytes(bytes);
+        final excel = Excel.decodeBytes(fileBytes);
 
         if (excel.tables.isEmpty) {
           throw Exception('Excel file has no sheets.');
@@ -4589,6 +4599,54 @@ class _AddExpensePageState extends State<AddExpensePage>
           if (!_looksLikeExpenseRow(data)) continue;
           rows.add(data);
         }
+      } else if (extension == 'pdf') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Processing PDF... this can take a few seconds.'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+
+        final document = sfpdf.PdfDocument(inputBytes: fileBytes);
+        final pageCount = document.pages.count;
+        final rawText = sfpdf.PdfTextExtractor(document).extractText();
+        document.dispose();
+
+        String normalizedText = _normalizeReceiptText(rawText).trim();
+        if (normalizedText.isEmpty ||
+            _extractBestAmountFromReceipt(normalizedText) == null) {
+          final ocrText = await _extractTextFromPdfUsingOcr(
+            fileBytes,
+            maxPagesHint: pageCount,
+          );
+          if (ocrText.trim().isNotEmpty) {
+            normalizedText = _normalizeReceiptText(ocrText).trim();
+          }
+        }
+
+        if (normalizedText.isEmpty) {
+          throw Exception(
+            'PDF text could not be read. Try a clearer file or import CSV/Excel.',
+          );
+        }
+
+        final amount = _extractBestAmountFromReceipt(normalizedText);
+        if (amount == null || amount <= 0) {
+          throw Exception('Could not detect a valid expense amount in this PDF.');
+        }
+
+        rows.add({
+          'title': _extractBestTitleFromRawText(normalizedText) ?? 'Imported Expense',
+          'amount': amount,
+          'date': (_extractBestDateFromReceipt(normalizedText) ?? DateTime.now())
+              .toIso8601String(),
+          'category': _inferCategoryFromReceipt(normalizedText),
+          'payment method': _detectPaymentMethodFromReceipt(normalizedText) ?? 'Cash',
+          'location': _extractBestLocationFromReceipt(normalizedText),
+          'description': normalizedText,
+        });
       } else {
         throw Exception('Unsupported file type.');
       }
@@ -4682,6 +4740,67 @@ class _AddExpensePageState extends State<AddExpensePage>
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    }
+  }
+
+  Future<String> _extractTextFromPdfUsingOcr(
+    Uint8List pdfBytes, {
+    int? maxPagesHint,
+  }) async {
+    TextRecognizer? recognizer;
+    final extracted = StringBuffer();
+    final tempFiles = <File>[];
+
+    try {
+      recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+      final tempDir = await getTemporaryDirectory();
+
+      final maxPages = ((maxPagesHint ?? 1) < 3 ? (maxPagesHint ?? 1) : 3);
+      final pageIndexes = List<int>.generate(maxPages, (i) => i);
+
+      int pageNo = 0;
+      await for (final page in Printing.raster(
+        pdfBytes,
+        pages: pageIndexes,
+        dpi: 150,
+      )) {
+        pageNo++;
+        final pngBytes = await page.toPng();
+        if (pngBytes.isEmpty) {
+          continue;
+        }
+
+        try {
+          final imgPath =
+              '${tempDir.path}/wealtha_pdf_ocr_${DateTime.now().microsecondsSinceEpoch}_$pageNo.png';
+          final imgFile = File(imgPath);
+          await imgFile.writeAsBytes(pngBytes, flush: true);
+          tempFiles.add(imgFile);
+
+          final inputImage = InputImage.fromFilePath(imgPath);
+          final recognized = await recognizer.processImage(inputImage);
+          final text = _buildReadableReceiptText(recognized).trim();
+          if (text.isNotEmpty) {
+            extracted.writeln(text);
+          }
+        } catch (_) {}
+      }
+
+      return extracted.toString().trim();
+    } catch (_) {
+      return '';
+    } finally {
+      try {
+        await recognizer?.close();
+      } catch (_) {}
+
+      for (final file in tempFiles) {
+        try {
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (_) {}
+      }
     }
   }
 
@@ -5064,6 +5183,36 @@ class _AddExpensePageState extends State<AddExpensePage>
 
     return _cleanMerchantTitle(
       lines.first.length > 40 ? lines.first.substring(0, 40) : lines.first,
+    );
+  }
+
+  String? _extractBestTitleFromRawText(String text) {
+    final lines = text
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .take(12)
+        .toList();
+
+    if (lines.isEmpty) return null;
+
+    for (final line in lines) {
+      if (_isBadMerchantLine(line)) continue;
+
+      final letterCount = RegExp(r'[A-Za-z]').allMatches(line).length;
+      if (letterCount < 3) continue;
+
+      final normalized = _cleanMerchantTitle(
+        line.length > 40 ? line.substring(0, 40) : line,
+      );
+      if (normalized.isNotEmpty) {
+        return normalized;
+      }
+    }
+
+    final fallback = lines.first;
+    return _cleanMerchantTitle(
+      fallback.length > 40 ? fallback.substring(0, 40) : fallback,
     );
   }
 
