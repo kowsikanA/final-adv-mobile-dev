@@ -1769,6 +1769,7 @@ import 'contact_page.dart';
 import 'charts_page.dart';
 import 'ai_chat_page.dart';
 import 'financial_news_page.dart';
+import 'settings_page.dart';
 
 class ExpensePage extends StatefulWidget {
   const ExpensePage({super.key});
@@ -3706,58 +3707,77 @@ class _ExpensePageState extends State<ExpensePage> {
     );
   }
 
-  Widget _buildProfileTab(ColorScheme scheme) {
-    final user = FirebaseAuth.instance.currentUser;
+Widget _buildProfileTab(ColorScheme scheme) {
+  final user = FirebaseAuth.instance.currentUser;
 
-    return ListView(
-      padding: const EdgeInsets.all(14),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 34,
-                  backgroundColor: scheme.primary.withValues(alpha: 0.15),
-                  child: Icon(
-                    Icons.person,
-                    size: 34,
-                    color: scheme.primary,
-                  ),
+  return ListView(
+    padding: const EdgeInsets.all(14),
+    children: [
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 34,
+                backgroundColor: scheme.primary.withValues(alpha: 0.15),
+                child: Icon(
+                  Icons.person,
+                  size: 34,
+                  color: scheme.primary,
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  user?.email ?? "No email",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: scheme.onSurface,
-                  ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                user?.email ?? "No email",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: scheme.onSurface,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  "Signed in user",
-                  style: TextStyle(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Signed in user",
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 10),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text("Logout"),
-            onTap: _logout,
-          ),
+      ),
+      const SizedBox(height: 10),
+
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.settings_outlined),
+          title: const Text("Settings"),
+          subtitle: const Text("Appearance and accessibility"),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const SettingsPage(),
+              ),
+            );
+          },
         ),
-      ],
-    );
-  }
+      ),
+
+      const SizedBox(height: 10),
+
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text("Logout"),
+          onTap: _logout,
+        ),
+      ),
+    ],
+  );
+}
 
   /// Build personalized header with greeting and user avatar
   Widget _buildHeaderWidget(ColorScheme scheme) {

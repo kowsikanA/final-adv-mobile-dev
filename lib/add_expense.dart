@@ -7,7 +7,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
@@ -48,24 +47,24 @@ class _AddExpensePageState extends State<AddExpensePage>
   RecurringFrequency? _selectedFrequency;
 
   final List<String> _categories = const [
-    "Food",
-    "Transport",
-    "Bills",
-    "Shopping",
-    "Entertainment",
-    "Health",
-    "Other",
+    'Food',
+    'Transport',
+    'Bills',
+    'Shopping',
+    'Entertainment',
+    'Health',
+    'Other',
   ];
 
   final List<String> _paymentMethods = const [
-    "Cash",
-    "Debit",
-    "Credit",
-    "Online",
+    'Cash',
+    'Debit',
+    'Credit',
+    'Online',
   ];
 
-  String _selectedCategory = "Food";
-  String _selectedPayment = "Debit";
+  String _selectedCategory = 'Food';
+  String _selectedPayment = 'Debit';
   bool _showDescription = false;
 
   bool _isFabOpen = false;
@@ -86,6 +85,7 @@ class _AddExpensePageState extends State<AddExpensePage>
   @override
   void initState() {
     super.initState();
+
     _fabController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 220),
@@ -116,12 +116,7 @@ class _AddExpensePageState extends State<AddExpensePage>
 
       if ((initial.location ?? '').trim().isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) async {
-          final suggestions = await _fetchLocationSuggestions(
-            initial.location!,
-          );
-          if (suggestions.isNotEmpty && mounted) {
-            await _selectLocation(suggestions.first);
-          }
+          await _searchAndSelectLocation(initial.location!);
         });
       }
     }
@@ -163,12 +158,11 @@ class _AddExpensePageState extends State<AddExpensePage>
 
       if (response.file != null) {
         await _processPickedReceiptFile(response.file!);
-        return;
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to recover camera image: $e")),
+        SnackBar(content: Text('Failed to recover camera image: $e')),
       );
     }
   }
@@ -178,16 +172,14 @@ class _AddExpensePageState extends State<AddExpensePage>
 
     try {
       if (!mounted) return;
+
       setState(() {
         _isScanningReceipt = true;
         _scannedRawText = null;
       });
 
       final inputImage = InputImage.fromFilePath(pickedFile.path);
-
-      textRecognizer = TextRecognizer(
-        script: TextRecognitionScript.latin,
-      );
+      textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
       final recognizedText = await textRecognizer.processImage(inputImage);
       final rebuiltText = _buildReadableReceiptText(recognizedText);
@@ -205,8 +197,8 @@ class _AddExpensePageState extends State<AddExpensePage>
         SnackBar(
           content: Text(
             rebuiltText.isEmpty
-                ? "Scan finished, but no text was detected"
-                : "Receipt scanned successfully",
+                ? 'Scan finished, but no text was detected'
+                : 'Receipt scanned successfully',
           ),
         ),
       );
@@ -214,7 +206,7 @@ class _AddExpensePageState extends State<AddExpensePage>
       if (!mounted) return;
       HapticFeedback.heavyImpact();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Scan failed: $e")),
+        SnackBar(content: Text('Scan failed: $e')),
       );
     } finally {
       try {
@@ -256,9 +248,9 @@ class _AddExpensePageState extends State<AddExpensePage>
     } catch (e) {
       if (!mounted) return;
       HapticFeedback.heavyImpact();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Scan failed: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Scan failed: $e')),
+      );
     }
   }
 
@@ -281,14 +273,12 @@ class _AddExpensePageState extends State<AddExpensePage>
         allowMultiple: false,
       );
 
-      if (result == null || result.files.isEmpty) {
-        return;
-      }
+      if (result == null || result.files.isEmpty) return;
 
       final picked = result.files.single;
       final path = picked.path;
       if (path == null) {
-        throw Exception("Unable to read selected file path.");
+        throw Exception('Unable to read selected file path.');
       }
 
       final extension = (picked.extension ?? '').toLowerCase();
@@ -298,10 +288,10 @@ class _AddExpensePageState extends State<AddExpensePage>
 
       if (extension == 'csv') {
         final input = await file.readAsString();
-        final csvTable = CsvToListConverter().convert(input);
+        final csvTable = const CsvToListConverter().convert(input);
 
         if (csvTable.isEmpty) {
-          throw Exception("CSV file is empty.");
+          throw Exception('CSV file is empty.');
         }
 
         final headers = csvTable.first
@@ -325,12 +315,12 @@ class _AddExpensePageState extends State<AddExpensePage>
         final excel = Excel.decodeBytes(bytes);
 
         if (excel.tables.isEmpty) {
-          throw Exception("Excel file has no sheets.");
+          throw Exception('Excel file has no sheets.');
         }
 
         final sheet = excel.tables.values.first;
         if (sheet.rows.isEmpty) {
-          throw Exception("Excel sheet is empty.");
+          throw Exception('Excel sheet is empty.');
         }
 
         final headers = sheet.rows.first
@@ -350,7 +340,7 @@ class _AddExpensePageState extends State<AddExpensePage>
           rows.add(data);
         }
       } else {
-        throw Exception("Unsupported file type.");
+        throw Exception('Unsupported file type.');
       }
 
       final toImport = <Expense>[];
@@ -379,8 +369,8 @@ class _AddExpensePageState extends State<AddExpensePage>
 
         final title =
             _stringValue(_readAny(row, const ['title', 'name', 'item'])) ??
-            description ??
-            'Imported Expense';
+                description ??
+                'Imported Expense';
 
         final categoryText = _stringValue(
           _readAny(row, const ['category', 'type']),
@@ -411,7 +401,7 @@ class _AddExpensePageState extends State<AddExpensePage>
             date: parsedDate ?? DateTime.now(),
             dueDate: null,
             description: description,
-            paymentMethod: _normalizePaymentMethod(paymentText) ?? "Cash",
+            paymentMethod: _normalizePaymentMethod(paymentText) ?? 'Cash',
             location: locationText,
             isPaid: false,
           ),
@@ -427,8 +417,8 @@ class _AddExpensePageState extends State<AddExpensePage>
         SnackBar(
           content: Text(
             importedCount > 0
-                ? "Imported $importedCount expense(s)"
-                : "No valid expense rows found in file",
+                ? 'Imported $importedCount expense(s)'
+                : 'No valid expense rows found in file',
           ),
         ),
       );
@@ -439,9 +429,9 @@ class _AddExpensePageState extends State<AddExpensePage>
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Import failed: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Import failed: $e')),
+      );
     }
   }
 
@@ -467,6 +457,7 @@ class _AddExpensePageState extends State<AddExpensePage>
     final joined = row.values
         .map((e) => e?.toString().toLowerCase() ?? '')
         .join(' ');
+
     if (joined.contains('total expenses') ||
         joined.contains('grand total') ||
         joined.contains('subtotal')) {
@@ -533,7 +524,6 @@ class _AddExpensePageState extends State<AddExpensePage>
         if (year < 100) {
           year += (year >= 70) ? 1900 : 2000;
         }
-
         if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
           return DateTime(year, month, day);
         }
@@ -560,7 +550,6 @@ class _AddExpensePageState extends State<AddExpensePage>
         if (year < 100) {
           year += (year >= 70) ? 1900 : 2000;
         }
-
         if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
           return DateTime(year, month, day);
         }
@@ -577,7 +566,6 @@ class _AddExpensePageState extends State<AddExpensePage>
         if (year < 100) {
           year += (year >= 70) ? 1900 : 2000;
         }
-
         if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
           return DateTime(year, month, day);
         }
@@ -651,11 +639,9 @@ class _AddExpensePageState extends State<AddExpensePage>
       final double leftB = b['left'] as double;
 
       final double topDiff = (topA - topB).abs();
-
       if (topDiff <= 14) {
         return leftA.compareTo(leftB);
       }
-
       return topA.compareTo(topB);
     });
 
@@ -757,34 +743,8 @@ class _AddExpensePageState extends State<AddExpensePage>
 
     final headerLines = <String>[];
     for (final line in topLines) {
-      if (_looksLikeHeaderStopLine(line)) {
-        break;
-      }
+      if (_looksLikeHeaderStopLine(line)) break;
       headerLines.add(line);
-    }
-
-    String cleanMerchant(String value) {
-      var text = value.trim();
-      if (text.isEmpty) return text;
-
-      text = text.replaceAll(RegExp(r'\s+'), ' ');
-      text = text.replaceAll(
-        RegExp(r'(?<=\D)0(?=\D)|(?<=\b)0(?=\D)|(?<=\D)0(?=\b)'),
-        'O',
-      );
-
-      if (text == text.toUpperCase()) {
-        return text
-            .split(RegExp(r'\s+'))
-            .where((w) => w.isNotEmpty)
-            .map((w) {
-              if (w.length == 1) return w.toUpperCase();
-              return w[0].toUpperCase() + w.substring(1).toLowerCase();
-            })
-            .join(' ');
-      }
-
-      return text;
     }
 
     bool looksLikeAddress(String line) {
@@ -839,18 +799,20 @@ class _AddExpensePageState extends State<AddExpensePage>
     }
 
     if (bestLine != null && bestLine.trim().isNotEmpty) {
-      return cleanMerchant(
+      return _cleanMerchantTitle(
         bestLine.length > 40 ? bestLine.substring(0, 40) : bestLine,
       );
     }
 
     for (final line in topLines) {
       if (!_isBadMerchantLine(line)) {
-        return cleanMerchant(line.length > 40 ? line.substring(0, 40) : line);
+        return _cleanMerchantTitle(
+          line.length > 40 ? line.substring(0, 40) : line,
+        );
       }
     }
 
-    return cleanMerchant(
+    return _cleanMerchantTitle(
       lines.first.length > 40 ? lines.first.substring(0, 40) : lines.first,
     );
   }
@@ -887,8 +849,7 @@ class _AddExpensePageState extends State<AddExpensePage>
       if (totalLineRegex.hasMatch(line)) {
         final matches = amountRegex.allMatches(line).toList();
         if (matches.isNotEmpty) {
-          final last = matches.last.group(0);
-          final parsed = _tryParseReceiptAmount(last ?? '');
+          final parsed = _tryParseReceiptAmount(matches.last.group(0) ?? '');
           if (parsed != null && parsed > 0) {
             return parsed;
           }
@@ -962,7 +923,7 @@ class _AddExpensePageState extends State<AddExpensePage>
         .where((e) => e.isNotEmpty)
         .toList();
 
-    final dueKeywords = [
+    const dueKeywords = [
       'due date',
       'payment due',
       'due by',
@@ -990,7 +951,7 @@ class _AddExpensePageState extends State<AddExpensePage>
   bool _detectIfPaid(String text) {
     final lower = text.toLowerCase();
 
-    final unpaidKeywords = [
+    const unpaidKeywords = [
       'amount due',
       'balance due',
       'payment due',
@@ -1002,7 +963,7 @@ class _AddExpensePageState extends State<AddExpensePage>
       'statement',
     ];
 
-    final paidKeywords = [
+    const paidKeywords = [
       'approved',
       'paid',
       'paid in full',
@@ -1067,23 +1028,23 @@ class _AddExpensePageState extends State<AddExpensePage>
 
       final looksLikeZipCity =
           RegExp(r'\b\d{5}(?:-\d{4})?\b').hasMatch(line) ||
-          RegExp(r'\b\d{4,6}\b').hasMatch(line);
+              RegExp(r'\b\d{4,6}\b').hasMatch(line);
 
       final looksLikeStreet =
           lower.contains('street') ||
-          lower.contains('st.') ||
-          lower.contains('st ') ||
-          lower.contains('road') ||
-          lower.contains('rd') ||
-          lower.contains('ave') ||
-          lower.contains('avenue') ||
-          lower.contains('blvd') ||
-          lower.contains('drive') ||
-          lower.contains('dr ') ||
-          lower.contains('lane') ||
-          lower.contains('ln ') ||
-          lower.contains('finch avenue') ||
-          lower.contains('scarborough');
+              lower.contains('st.') ||
+              lower.contains('st ') ||
+              lower.contains('road') ||
+              lower.contains('rd') ||
+              lower.contains('ave') ||
+              lower.contains('avenue') ||
+              lower.contains('blvd') ||
+              lower.contains('drive') ||
+              lower.contains('dr ') ||
+              lower.contains('lane') ||
+              lower.contains('ln ') ||
+              lower.contains('finch avenue') ||
+              lower.contains('scarborough');
 
       if (looksLikeStreet || looksLikeZipCity) {
         addressCandidates.add(line);
@@ -1213,20 +1174,10 @@ class _AddExpensePageState extends State<AddExpensePage>
     final bestLocation = _extractBestLocationFromReceipt(normalizedText);
     if (bestLocation != null && bestLocation.trim().isNotEmpty) {
       _locationCtrl.text = bestLocation;
+      await _searchAndSelectLocation(bestLocation);
     }
 
     _selectedCategory = _inferCategoryFromReceipt(normalizedText);
-
-    if (_locationCtrl.text.trim().isNotEmpty) {
-      try {
-        final suggestions = await _fetchLocationSuggestions(_locationCtrl.text);
-        if (suggestions.isNotEmpty && mounted) {
-          await _selectLocation(suggestions.first);
-        }
-      } catch (_) {
-        // ignore geocoding failures
-      }
-    }
 
     if (mounted) {
       setState(() {
@@ -1235,79 +1186,56 @@ class _AddExpensePageState extends State<AddExpensePage>
     }
   }
 
-  Future<List<_LocationSuggestion>> _fetchLocationSuggestions(
-    String pattern,
-  ) async {
-    final query = pattern.trim();
-    if (query.length < 3) return [];
-
-    try {
-      final results = await locationFromAddress(query);
-      final suggestions = <_LocationSuggestion>[];
-
-      for (final loc in results.take(5)) {
-        String label =
-            "${loc.latitude.toStringAsFixed(5)}, ${loc.longitude.toStringAsFixed(5)}";
-
-        try {
-          final placemarks = await placemarkFromCoordinates(
-            loc.latitude,
-            loc.longitude,
-          );
-          if (placemarks.isNotEmpty) {
-            final p = placemarks.first;
-            final parts = <String>[
-              if ((p.name ?? "").trim().isNotEmpty) p.name!.trim(),
-              if ((p.locality ?? "").trim().isNotEmpty) p.locality!.trim(),
-              if ((p.administrativeArea ?? "").trim().isNotEmpty)
-                p.administrativeArea!.trim(),
-              if ((p.country ?? "").trim().isNotEmpty) p.country!.trim(),
-            ];
-            if (parts.isNotEmpty) {
-              label = parts.join(", ");
-            }
-          }
-        } catch (_) {
-          // keep fallback label
-        }
-
-        suggestions.add(
-          _LocationSuggestion(
-            label: label,
-            latitude: loc.latitude,
-            longitude: loc.longitude,
-          ),
-        );
-      }
-
-      final seen = <String>{};
-      return suggestions.where((s) => seen.add(s.label)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
-
-  Future<void> _selectLocation(_LocationSuggestion suggestion) async {
-    HapticFeedback.selectionClick();
-
-    final point = LatLng(suggestion.latitude, suggestion.longitude);
+  Future<void> _searchAndSelectLocation(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.length < 3) return;
 
     setState(() {
-      _locationCtrl.text = suggestion.label;
-      _locationPoint = point;
+      _isSearchingLocation = true;
       _locationError = null;
-      _isSearchingLocation = false;
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      try {
-        _mapController.move(point, 15);
-      } catch (_) {}
-    });
+    try {
+      final results = await locationFromAddress(trimmed);
+
+      if (results.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _locationPoint = null;
+          _locationError = 'No matching locations found';
+          _isSearchingLocation = false;
+        });
+        return;
+      }
+
+      final first = results.first;
+      final point = LatLng(first.latitude, first.longitude);
+
+      if (!mounted) return;
+      setState(() {
+        _locationPoint = point;
+        _locationError = null;
+        _isSearchingLocation = false;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          _mapController.move(point, 15);
+        } catch (_) {}
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _locationPoint = null;
+        _locationError = 'Could not find location';
+        _isSearchingLocation = false;
+      });
+    }
   }
 
   Future<void> _pickDate() async {
     HapticFeedback.selectionClick();
+
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
@@ -1324,6 +1252,7 @@ class _AddExpensePageState extends State<AddExpensePage>
 
   Future<void> _pickDueDate() async {
     HapticFeedback.selectionClick();
+
     final now = DateTime.now();
     final initialDate = _dueDate ?? _date ?? now;
     final picked = await showDatePicker(
@@ -1339,23 +1268,21 @@ class _AddExpensePageState extends State<AddExpensePage>
     }
   }
 
-  /// Get human-readable label for recurring frequency
   String _getFrequencyLabel(RecurringFrequency freq) {
     switch (freq) {
       case RecurringFrequency.daily:
-        return "every day";
+        return 'every day';
       case RecurringFrequency.biDaily:
-        return "every other day";
+        return 'every other day';
       case RecurringFrequency.monthly:
-        return "monthly";
+        return 'monthly';
       case RecurringFrequency.yearly:
-        return "yearly";
+        return 'yearly';
       default:
-        return "as scheduled";
+        return 'as scheduled';
     }
   }
 
-  /// Show modal to select recurring frequency
   Future<void> _showRecurringFrequencyPicker() async {
     final frequency = await showModalBottomSheet<RecurringFrequency>(
       context: context,
@@ -1367,25 +1294,28 @@ class _AddExpensePageState extends State<AddExpensePage>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  "How often should this repeat?",
+                  'How often should this repeat?',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: 16),
                 ListTile(
-                  title: const Text("Every Day"),
+                  title: const Text('Every Day'),
                   onTap: () => Navigator.pop(context, RecurringFrequency.daily),
                 ),
                 ListTile(
-                  title: const Text("Every Other Day"),
-                  onTap: () => Navigator.pop(context, RecurringFrequency.biDaily),
+                  title: const Text('Every Other Day'),
+                  onTap: () =>
+                      Navigator.pop(context, RecurringFrequency.biDaily),
                 ),
                 ListTile(
-                  title: const Text("Once a Month"),
-                  onTap: () => Navigator.pop(context, RecurringFrequency.monthly),
+                  title: const Text('Once a Month'),
+                  onTap: () =>
+                      Navigator.pop(context, RecurringFrequency.monthly),
                 ),
                 ListTile(
-                  title: const Text("Once a Year"),
-                  onTap: () => Navigator.pop(context, RecurringFrequency.yearly),
+                  title: const Text('Once a Year'),
+                  onTap: () =>
+                      Navigator.pop(context, RecurringFrequency.yearly),
                 ),
                 const SizedBox(height: 8),
               ],
@@ -1409,7 +1339,7 @@ class _AddExpensePageState extends State<AddExpensePage>
     if (amount == null || amount <= 0) {
       HapticFeedback.heavyImpact();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Amount must be greater than 0")),
+        const SnackBar(content: Text('Amount must be greater than 0')),
       );
       return;
     }
@@ -1434,7 +1364,6 @@ class _AddExpensePageState extends State<AddExpensePage>
     } else {
       await ExpenseDatabase.instance.insertExpense(expense);
 
-      /// If recurring, create a recurring expense template
       if (_isRecurring && _selectedFrequency != null) {
         final recurringExpense = RecurringExpense(
           title: _titleCtrl.text.trim(),
@@ -1452,8 +1381,7 @@ class _AddExpensePageState extends State<AddExpensePage>
           nextDueDate: _date ?? DateTime.now(),
         );
 
-        await ExpenseDatabase.instance
-            .insertRecurringExpense(recurringExpense);
+        await ExpenseDatabase.instance.insertRecurringExpense(recurringExpense);
       }
     }
 
@@ -1473,6 +1401,78 @@ class _AddExpensePageState extends State<AddExpensePage>
         heroTag: heroTag,
         onPressed: onPressed,
         child: Icon(icon),
+      ),
+    );
+  }
+
+  Widget _buildRecurringSection(ColorScheme scheme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: scheme.primary.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        color: _isRecurring
+            ? scheme.primary.withValues(alpha: 0.08)
+            : Colors.transparent,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Recurring Payment',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                if (_isRecurring && _selectedFrequency != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Repeats ${_getFrequencyLabel(_selectedFrequency!)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 110,
+            child: !_isRecurring
+                ? OutlinedButton(
+                    onPressed: () async {
+                      HapticFeedback.selectionClick();
+                      setState(() => _isRecurring = true);
+                      await _showRecurringFrequencyPicker();
+                    },
+                    child: const Text('Enable'),
+                  )
+                : OutlinedButton(
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      setState(() {
+                        _isRecurring = false;
+                        _selectedFrequency = null;
+                      });
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: scheme.error,
+                      side: BorderSide(color: scheme.error),
+                    ),
+                    child: const Text('Disable'),
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -1499,17 +1499,18 @@ class _AddExpensePageState extends State<AddExpensePage>
                 child: Form(
                   key: _formKey,
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       TextFormField(
                         controller: _titleCtrl,
                         textInputAction: TextInputAction.next,
                         decoration: const InputDecoration(
-                          labelText: "Title",
+                          labelText: 'Title',
                           prefixIcon: Icon(Icons.title),
                         ),
                         validator: (v) {
                           if (v == null || v.trim().isEmpty) {
-                            return "Title is required";
+                            return 'Title is required';
                           }
                           return null;
                         },
@@ -1522,13 +1523,13 @@ class _AddExpensePageState extends State<AddExpensePage>
                         ),
                         textInputAction: TextInputAction.next,
                         decoration: const InputDecoration(
-                          labelText: "Amount",
-                          hintText: "e.g., 12.50",
+                          labelText: 'Amount',
+                          hintText: 'e.g., 12.50',
                           prefixIcon: Icon(Icons.attach_money),
                         ),
                         validator: (v) {
                           if (v == null || v.trim().isEmpty) {
-                            return "Amount is required";
+                            return 'Amount is required';
                           }
                           return null;
                         },
@@ -1544,110 +1545,64 @@ class _AddExpensePageState extends State<AddExpensePage>
                             ),
                             SizedBox(width: 10),
                             Text(
-                              "Scanning receipt...",
+                              'Scanning receipt...',
                               style: TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ],
                         ),
                       ],
                       const SizedBox(height: 12),
-                      TypeAheadField<_LocationSuggestion>(
-                        suggestionsCallback: (pattern) async {
-                          setState(() {
-                            _isSearchingLocation = true;
-                            _locationError = null;
-                          });
-
-                          final items = await _fetchLocationSuggestions(
-                            pattern,
-                          );
-
-                          if (mounted) {
+                      TextFormField(
+                        controller: _locationCtrl,
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          labelText: 'Location (optional)',
+                          prefixIcon: const Icon(Icons.location_on_outlined),
+                          suffixIcon: _isSearchingLocation
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                )
+                              : (_locationPoint != null
+                                  ? const Icon(Icons.check_circle_outline)
+                                  : null),
+                        ),
+                        onChanged: (value) {
+                          if (value.trim().isEmpty) {
                             setState(() {
-                              _isSearchingLocation = false;
-                              if (pattern.trim().length >= 3 && items.isEmpty) {
-                                _locationError = "No matching locations found";
-                              } else {
-                                _locationError = null;
-                              }
+                              _locationPoint = null;
+                              _locationError = null;
                             });
                           }
-
-                          return items;
                         },
-                        itemBuilder: (context, suggestion) {
-                          return ListTile(
-                            leading: const Icon(Icons.location_on_outlined),
-                            title: Text(
-                              suggestion.label,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
+                        onFieldSubmitted: (value) async {
+                          await _searchAndSelectLocation(value);
                         },
-                        onSelected: _selectLocation,
-                        builder: (context, controller, focusNode) {
-                          if (controller.text != _locationCtrl.text) {
-                            controller.text = _locationCtrl.text;
-                            controller.selection = TextSelection.fromPosition(
-                              TextPosition(offset: controller.text.length),
-                            );
-                          }
-
-                          return TextFormField(
-                            controller: controller,
-                            focusNode: focusNode,
-                            textInputAction: TextInputAction.next,
-                            decoration: InputDecoration(
-                              labelText: "Location (optional)",
-                              prefixIcon: const Icon(
-                                Icons.location_on_outlined,
-                              ),
-                              suffixIcon: _isSearchingLocation
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(12),
-                                      child: SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    )
-                                  : (_locationPoint != null
-                                        ? const Icon(Icons.check_circle_outline)
-                                        : null),
-                            ),
-                            onChanged: (value) {
-                              _locationCtrl.text = value;
-                              if (value.trim().isEmpty) {
-                                setState(() {
-                                  _locationPoint = null;
-                                  _locationError = null;
-                                });
-                              }
-                            },
-                          );
-                        },
-                        emptyBuilder: (context) => const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Text("No matching locations"),
-                        ),
-                        loadingBuilder: (context) => const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: Center(child: CircularProgressIndicator()),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await _searchAndSelectLocation(_locationCtrl.text);
+                          },
+                          icon: const Icon(Icons.search),
+                          label: const Text('Search Location'),
                         ),
                       ),
                       if (_locationError != null) ...[
                         const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            _locationError!,
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.error,
-                              fontWeight: FontWeight.w600,
-                            ),
+                        Text(
+                          _locationError!,
+                          style: TextStyle(
+                            color: scheme.error,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -1657,6 +1612,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                           borderRadius: BorderRadius.circular(16),
                           child: SizedBox(
                             height: 220,
+                            width: double.infinity,
                             child: FlutterMap(
                               mapController: _mapController,
                               options: MapOptions(
@@ -1691,14 +1647,11 @@ class _AddExpensePageState extends State<AddExpensePage>
                       if (_scannedRawText != null &&
                           _scannedRawText!.trim().isNotEmpty) ...[
                         const SizedBox(height: 12),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            "Scanned Text Preview",
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: scheme.onSurface,
-                            ),
+                        Text(
+                          'Scanned Text Preview',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: scheme.onSurface,
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -1706,8 +1659,8 @@ class _AddExpensePageState extends State<AddExpensePage>
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHighest.withOpacity(
-                              0.45,
+                            color: scheme.surfaceContainerHighest.withValues(
+                              alpha: 0.45,
                             ),
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1723,14 +1676,11 @@ class _AddExpensePageState extends State<AddExpensePage>
                         ),
                       ],
                       const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          "Category",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: scheme.onSurface,
-                          ),
+                      Text(
+                        'Category',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: scheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1750,14 +1700,11 @@ class _AddExpensePageState extends State<AddExpensePage>
                         }).toList(),
                       ),
                       const SizedBox(height: 16),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          "Payment",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: scheme.onSurface,
-                          ),
+                      Text(
+                        'Payment',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: scheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -1777,72 +1724,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                         }).toList(),
                       ),
                       const SizedBox(height: 16),
-                      /// Recurring Expense Toggle
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: scheme.primary.withValues(alpha: 0.3),
-                            width: 1.5,
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                          color: _isRecurring
-                              ? scheme.primary.withValues(alpha: 0.1)
-                              : Colors.transparent,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Recurring Payment",
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      color: scheme.onSurface,
-                                    ),
-                                  ),
-                                  if (_isRecurring && _selectedFrequency != null)
-                                    Text(
-                                      "Repeats ${_getFrequencyLabel(_selectedFrequency!)}",
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            if (!_isRecurring)
-                              OutlinedButton(
-                                onPressed: () {
-                                  HapticFeedback.selectionClick();
-                                  setState(() => _isRecurring = true);
-                                  _showRecurringFrequencyPicker();
-                                },
-                                child: const Text("Enable"),
-                              )
-                            else
-                              OutlinedButton(
-                                onPressed: () {
-                                  HapticFeedback.selectionClick();
-                                  setState(() {
-                                    _isRecurring = false;
-                                    _selectedFrequency = null;
-                                  });
-                                },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: scheme.error,
-                                  side: BorderSide(color: scheme.error),
-                                ),
-                                child: const Text("Disable"),
-                              ),
-                          ],
-                        ),
-                      ),
+                      _buildRecurringSection(scheme),
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
@@ -1851,8 +1733,8 @@ class _AddExpensePageState extends State<AddExpensePage>
                           icon: const Icon(Icons.calendar_month_outlined),
                           label: Text(
                             _date == null
-                                ? "Pick date"
-                                : "Date: ${_date!.toLocal().toString().split(' ').first}",
+                                ? 'Pick date'
+                                : 'Date: ${_date!.toLocal().toString().split(' ').first}',
                             style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),
@@ -1865,8 +1747,8 @@ class _AddExpensePageState extends State<AddExpensePage>
                           icon: const Icon(Icons.event_available_outlined),
                           label: Text(
                             _dueDate == null
-                                ? "Pick due date (optional)"
-                                : "Due Date: ${_dueDate!.toLocal().toString().split(' ').first}",
+                                ? 'Pick due date (optional)'
+                                : 'Due Date: ${_dueDate!.toLocal().toString().split(' ').first}',
                             style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),
@@ -1881,7 +1763,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                               setState(() => _dueDate = null);
                             },
                             icon: const Icon(Icons.close),
-                            label: const Text("Clear due date"),
+                            label: const Text('Clear due date'),
                           ),
                         ),
                       ],
@@ -1894,11 +1776,11 @@ class _AddExpensePageState extends State<AddExpensePage>
                           setState(() => _isPaid = value ?? false);
                         },
                         title: const Text(
-                          "Mark as already paid",
+                          'Mark as already paid',
                           style: TextStyle(fontWeight: FontWeight.w800),
                         ),
                         subtitle: const Text(
-                          "Turn this on if you already settled this expense.",
+                          'Turn this on if you already settled this expense.',
                         ),
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
@@ -1907,7 +1789,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                         children: [
                           Expanded(
                             child: Text(
-                              "Add description",
+                              'Add description',
                               style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 color: scheme.onSurface,
@@ -1934,7 +1816,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                                     controller: _descCtrl,
                                     maxLines: 3,
                                     decoration: const InputDecoration(
-                                      labelText: "Description (optional)",
+                                      labelText: 'Description (optional)',
                                       prefixIcon: Icon(Icons.notes_outlined),
                                     ),
                                   ),
@@ -1948,7 +1830,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                         child: ElevatedButton.icon(
                           onPressed: _save,
                           icon: const Icon(Icons.save),
-                          label: const Text("Save Expense"),
+                          label: const Text('Save Expense'),
                         ),
                       ),
                     ],
@@ -1980,19 +1862,19 @@ class _AddExpensePageState extends State<AddExpensePage>
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
+                              color: Colors.black.withValues(alpha: 0.08),
                               blurRadius: 8,
                             ),
                           ],
                         ),
                         child: const Text(
-                          "Import File",
+                          'Import File',
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
                       _buildMiniFab(
                         icon: Icons.description_outlined,
-                        heroTag: "file_fab",
+                        heroTag: 'file_fab',
                         onPressed: _onFileTap,
                       ),
                     ],
@@ -2012,19 +1894,19 @@ class _AddExpensePageState extends State<AddExpensePage>
                           borderRadius: BorderRadius.circular(10),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
+                              color: Colors.black.withValues(alpha: 0.08),
                               blurRadius: 8,
                             ),
                           ],
                         ),
                         child: const Text(
-                          "Scan Receipt",
+                          'Scan Receipt',
                           style: TextStyle(fontWeight: FontWeight.w700),
                         ),
                       ),
                       _buildMiniFab(
                         icon: Icons.camera_alt_outlined,
-                        heroTag: "camera_fab",
+                        heroTag: 'camera_fab',
                         onPressed: _onCameraTap,
                       ),
                     ],
@@ -2032,7 +1914,7 @@ class _AddExpensePageState extends State<AddExpensePage>
                   const SizedBox(height: 10),
                 ],
                 FloatingActionButton(
-                  heroTag: "main_expandable_fab",
+                  heroTag: 'main_expandable_fab',
                   onPressed: _toggleFab,
                   child: AnimatedRotation(
                     turns: _isFabOpen ? 0.125 : 0,
@@ -2044,16 +1926,4 @@ class _AddExpensePageState extends State<AddExpensePage>
             ),
     );
   }
-}
-
-class _LocationSuggestion {
-  final String label;
-  final double latitude;
-  final double longitude;
-
-  const _LocationSuggestion({
-    required this.label,
-    required this.latitude,
-    required this.longitude,
-  });
 }
