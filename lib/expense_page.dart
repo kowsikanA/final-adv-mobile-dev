@@ -3797,7 +3797,7 @@ Widget _buildProfileTab(ColorScheme scheme) {
     }
     
     return Padding(
-      padding: const EdgeInsets.only(right: 8.0),
+      padding: const EdgeInsets.only(top: 4, right: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
@@ -3806,8 +3806,8 @@ Widget _buildProfileTab(ColorScheme scheme) {
           Row(
             children: [
               Container(
-                width: 56,
-                height: 56,
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
@@ -3825,7 +3825,7 @@ Widget _buildProfileTab(ColorScheme scheme) {
                 ),
                 child: Icon(
                   Icons.person,
-                  size: 32,
+                  size: 28,
                   color: Colors.white,
                 ),
               ),
@@ -3958,7 +3958,7 @@ Widget _buildProfileTab(ColorScheme scheme) {
       key: _scaffoldKey,
       appBar: AppBar(
         title: _selectedIndex == 0 ? _buildHeaderWidget(scheme) : Text(titles[_selectedIndex]),
-        toolbarHeight: _selectedIndex == 0 ? 74 : 56,
+        toolbarHeight: _selectedIndex == 0 ? 78 : 56,
         actions: _selectedIndex == 0
             ? [
                 PopupMenuButton<String>(
